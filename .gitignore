@@ -1,0 +1,11 @@
+.idea
+.pytest_cache
+.coverage
+*.egg-info
+**/__pycache__
+venv
+build
+dist
+
+jote/data
+jote/data-manager
