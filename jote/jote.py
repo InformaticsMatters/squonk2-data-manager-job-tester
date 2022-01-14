@@ -361,8 +361,9 @@ def main() -> None:
             if test_fail_count and args.exit_on_failure:
                 break
 
-    num_tests_passed: int = num_tests - test_fail_count
     # Success or failure?
+    print('  ---')
+    num_tests_passed: int = num_tests - test_fail_count
     dry_run: str = '[DRY RUN]' if args.dry_run else ''
     if test_fail_count:
         print()
@@ -371,7 +372,7 @@ def main() -> None:
                          f' failed={test_fail_count}'
                          f' {dry_run}')
     else:
-        print(f'Done (Success) passed={num_tests_passed} {dry_run}')
+        print(f'Done (OK) passed={num_tests_passed} {dry_run}')
 
 
 # -----------------------------------------------------------------------------
