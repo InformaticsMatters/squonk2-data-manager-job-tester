@@ -31,8 +31,9 @@ of a successful test::
               exitCode: 0
               outputs:
               - name: diverse.smi
-                exists: true
-                lineCount: 100
+                checks:
+                - exists: true
+                - lineCount: 100
 
 Installation
 ------------
