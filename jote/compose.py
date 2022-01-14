@@ -17,6 +17,7 @@ services:
   job:
     image: {image}
     command: {command}
+    working_dir: {working_directory}
     environment:
     - DM_INSTANCE_DIRECTORY={instance_directory}
     volumes:
@@ -31,9 +32,6 @@ services:
 # A default, 30 minute timeout
 _DEFAULT_TEST_TIMEOUT: int = 30 * 60
 
-# The docker-compose version (for the first test)
-_COMPOSE_VERSION: Optional[str] = None
-
 
 def _get_docker_compose_version() -> str:
 
@@ -47,95 +45,121 @@ def _get_docker_compose_version() -> str:
     return result.stdout.decode("utf-8").split('\n')[0][23:]
 
 
-def get_test_path(test_name: str) -> str:
-    """Returns the path to the root directory for a given test.
-    """
-    cwd: str = os.getcwd()
-    return f'{cwd}/data-manager/jote/{test_name}'
+class Compose:
 
+    # The docker-compose version (for the first test)
+    _COMPOSE_VERSION: Optional[str] = None
 
-def create(test_name: str,
-           image: str,
-           project_directory: str,
-           command: str) -> str:
-    """Writes a docker-compose file
-    and creates the test directory structure returning the
-    full path to the test (project) directory.
-    """
-    global _COMPOSE_VERSION
+    def __init__(self, collection: str,
+                 job: str,
+                 test: str,
+                 image: str,
+                 project_directory: str,
+                 working_directory: str,
+                 command: str):
 
-    print('# Creating test environment...')
+        self._collection = collection
+        self._job = job
+        self._test = test
+        self._image = image
+        self._project_directory = project_directory
+        self._working_directory = working_directory
+        self._command = command
 
-    # Do we have the docker-compose version the user's installed?
-    if not _COMPOSE_VERSION:
-        _COMPOSE_VERSION = _get_docker_compose_version()
-        print(f'# docker-compose ({_COMPOSE_VERSION})')
+    def get_test_path(self) -> str:
+        """Returns the path to the root directory for a given test.
+        """
+        cwd: str = os.getcwd()
+        return f'{cwd}/data-manager/jote/{self._collection}.{self._job}.{self._test}'
 
-    # Make the test directory...
-    test_path: str = get_test_path(test_name)
-    project_path: str = f'{test_path}/project'
-    inst_path: str = f'{project_path}/{_INSTANCE_DIRECTORY}'
-    if not os.path.exists(inst_path):
-        os.makedirs(inst_path)
+    def get_test_project_path(self) -> str:
+        """Returns the path to the root directory for a given test.
+        """
+        test_path: str = self.get_test_path()
+        return f'{test_path}/project'
 
-    # Write the Docker compose content to a file to the test directory
-    variables: Dict[str, str] = {'test_path': project_path,
-                                 'image': image,
-                                 'command': command,
-                                 'project_directory': project_directory,
-                                 'instance_directory': _INSTANCE_DIRECTORY}
-    compose_content: str = _COMPOSE_CONTENT.format(**variables)
-    compose_path: str = f'{test_path}/docker-compose.yml'
-    with open(compose_path, 'wt') as compose_file:
-        compose_file.write(compose_content)
+    def create(self) -> str:
+        """Writes a docker-compose file
+        and creates the test directory structure returning the
+        full path to the test (project) directory.
+        """
 
-    print('# Created')
+        print('# Creating test environment...')
 
-    return project_path
+        # First, delete
+        test_path: str = self.get_test_path()
+        if os.path.exists(test_path):
+            shutil.rmtree(test_path)
 
+        # Do we have the docker-compose version the user's installed?
+        if not Compose._COMPOSE_VERSION:
+            Compose._COMPOSE_VERSION = _get_docker_compose_version()
+            print(f'# docker-compose ({Compose._COMPOSE_VERSION})')
 
-def run(test_name: str) -> Tuple[int, str, str]:
-    """Runs the container for the test, expecting the docker-compose file
-    written by the 'create()'. The container exit code is returned to the
-    caller along with the stdout and stderr content.
-    A non-zero exit code does not necessarily mean the test has failed.
-    """
+        # Make the test directory...
+        test_path: str = self.get_test_path()
+        project_path: str = self.get_test_project_path()
+        inst_path: str = f'{project_path}/{_INSTANCE_DIRECTORY}'
+        if not os.path.exists(inst_path):
+            os.makedirs(inst_path)
 
-    print('# Executing the test ("docker-compose up")...')
+        # Write the Docker compose content to a file to the test directory
+        variables: Dict[str, str] = {'test_path': project_path,
+                                     'image': self._image,
+                                     'command': self._command,
+                                     'project_directory': self._project_directory,
+                                     'working_directory': self._working_directory,
+                                     'instance_directory': _INSTANCE_DIRECTORY}
+        compose_content: str = _COMPOSE_CONTENT.format(**variables)
+        compose_path: str = f'{test_path}/docker-compose.yml'
+        with open(compose_path, 'wt') as compose_file:
+            compose_file.write(compose_content)
 
-    cwd = os.getcwd()
-    os.chdir(get_test_path(test_name))
+        print('# Created')
 
-    timeout: int = _DEFAULT_TEST_TIMEOUT
-    try:
-        # Run the container
-        # and then cleanup
-        test: subprocess.CompletedProcess =\
-            subprocess.run(['docker-compose', 'up',
-                            '--exit-code-from', 'job',
-                            '--abort-on-container-exit'],
-                           capture_output=True,
-                           timeout=timeout)
-        _ = subprocess.run(['docker-compose', 'down'],
-                           capture_output=True,
-                           timeout=120)
-    finally:
-        os.chdir(cwd)
+        return project_path
 
-    print(f'# Executed ({test.returncode})')
+    def run(self) -> Tuple[int, str, str]:
+        """Runs the container for the test, expecting the docker-compose file
+        written by the 'create()'. The container exit code is returned to the
+        caller along with the stdout and stderr content.
+        A non-zero exit code does not necessarily mean the test has failed.
+        """
 
-    return test.returncode,\
-        test.stdout.decode("utf-8"),\
-        test.stderr.decode("utf-8")
+        print('# Executing the test ("docker-compose up")...')
 
+        cwd = os.getcwd()
+        os.chdir(self.get_test_path())
 
-def delete(test_name: str, quiet: bool = False) -> None:
-    """Deletes a test directory created by 'crete()'.
-    """
-    print(f'# Deleting the test...')
+        timeout: int = _DEFAULT_TEST_TIMEOUT
+        try:
+            # Run the container
+            # and then cleanup
+            test: subprocess.CompletedProcess =\
+                subprocess.run(['docker-compose', 'up',
+                                '--exit-code-from', 'job',
+                                '--abort-on-container-exit'],
+                               capture_output=True,
+                               timeout=timeout)
+            _ = subprocess.run(['docker-compose', 'down'],
+                               capture_output=True,
+                               timeout=120)
+        finally:
+            os.chdir(cwd)
 
-    test_path: str = get_test_path(test_name)
-    if os.path.exists(test_path):
-        shutil.rmtree(test_path)
+        print(f'# Executed ({test.returncode})')
 
-    print('# Deleted')
+        return test.returncode,\
+            test.stdout.decode("utf-8"),\
+            test.stderr.decode("utf-8")
+
+    def delete(self) -> None:
+        """Deletes a test directory created by 'crete()'.
+        """
+        print(f'# Deleting the test...')
+
+        test_path: str = self.get_test_path()
+        if os.path.exists(test_path):
+            shutil.rmtree(test_path)
+
+        print('# Deleted')

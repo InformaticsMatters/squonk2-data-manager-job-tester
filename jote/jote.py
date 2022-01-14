@@ -6,13 +6,13 @@ import argparse
 import glob
 import os
 import shutil
-from typing import Any, Dict, List, Tuple
+from typing import Any, Dict, List, Optional, Tuple
 
 from munch import DefaultMunch
 import yaml
 
 from decoder import decoder
-import compose
+from compose import Compose
 
 # Where can we expect to find Job definitions?
 _DEFINITION_DIRECTORY: str = 'data-manager'
@@ -24,8 +24,6 @@ def _print_test_banner(collection: str,
 
     print('  ---')
     print(f'+ collection={collection} job={job_name} test={job_test_name}')
-    test_path: str = compose.get_test_path(job_name)
-    print(f'# path={test_path}')
 
 
 def _load() -> Tuple[List[DefaultMunch], int]:
@@ -73,6 +71,78 @@ def _copy_inputs(test_inputs: DefaultMunch,
     return True
 
 
+def _check_exists(name: str, path: str, expected: bool) -> bool:
+
+    exists: bool = os.path.exists(path)
+    if expected and not exists:
+        print('! FAILURE')
+        print(f'! Check exists "{name}" (does not exist)')
+        return False
+    elif not expected and exists:
+        print('! FAILURE')
+        print(f'! Check does not exist "{name}" (exists)')
+        return False
+
+    print(f'#   exists ({expected}) [ok]')
+    return True
+
+
+def _check_line_count(name: str, path: str, expected: int) -> bool:
+
+    line_count: int = 0
+    for _ in open(path):
+        line_count += 1
+
+    if line_count != expected:
+        print('! FAILURE')
+        print(f'! Check lineCount {name}'
+              f' (found {line_count}, expected {expected})')
+        return False
+
+    print(f'#   lineCount ({line_count}) [ok]')
+    return True
+
+
+def _check(t_compose: Compose,
+           output_checks: DefaultMunch) -> bool:
+    """Runs the checks on the Job outputs.
+    We currently support 'exists' and 'lineCount'.
+    """
+    assert t_compose
+    assert isinstance(t_compose, Compose)
+    assert output_checks
+    assert isinstance(output_checks, List)
+
+    print('# Checking...')
+
+    for output_check in output_checks:
+        output_name: str = output_check.name
+        print(f'# - {output_name}')
+        expected_file: str = os.path.join(t_compose.get_test_project_path(),
+                                          output_name)
+
+        for check in output_check.checks:
+            check_type: str = list(check.keys())[0]
+            if check_type == 'exists':
+                if not _check_exists(output_name,
+                                     expected_file,
+                                     check.exists):
+                    return False
+            elif check_type == 'lineCount':
+                if not _check_line_count(output_name,
+                                         expected_file,
+                                         check.lineCount):
+                    return False
+            else:
+                print('! FAILURE')
+                print(f'! Unknown output check type ({check_type})')
+                return False
+
+    print('# Checked')
+
+    return True
+
+
 def _test(args: argparse.Namespace,
           collection: str,
           job: str,
@@ -87,8 +157,17 @@ def _test(args: argparse.Namespace,
 
     job_image: str = f'{job_definition.image.name}:{job_definition.image.tag}'
     job_project_directory: str = job_definition.image['project-directory']
+    job_working_directory: str = job_definition.image['working-directory']
 
     for job_test_name in job_definition.tests:
+
+        test_status = True
+
+        # If a job test has been named,
+        # skip this test if it doesn't match
+        if args.test and not args.test == job_test_name:
+            continue
+
         _print_test_banner(collection, job, job_test_name)
 
         # Render the command for this test.
@@ -113,16 +192,26 @@ def _test(args: argparse.Namespace,
             print('! Failed to render command')
             print('! error={job_command}')
 
+        # Create the test directories, docker-compose file
+        # and copy inputs...
+        t_compose: Optional[Compose] = None
         if test_status:
 
             print(f'> image={job_image}')
             print(f'> command="{job_command}"')
 
             # Create the project
-            project_path: str = compose.create(job_test_name,
-                                               job_image,
-                                               job_project_directory,
-                                               job_command)
+            t_compose = Compose(collection,
+                                job,
+                                job_test_name,
+                                job_image,
+                                job_project_directory,
+                                job_working_directory,
+                                job_command)
+            project_path: str = t_compose.create()
+
+            test_path: str = t_compose.get_test_path()
+            print(f'# path={test_path}')
 
             # Copy the data into the test's project directory.
             # Data's expected to be found in the Job's 'inputs'.
@@ -131,9 +220,10 @@ def _test(args: argparse.Namespace,
                     _copy_inputs(job_definition.tests[job_test_name].inputs,
                                  project_path)
 
-        if test_status:
+        # Run the container
+        if test_status and not args.dry_run:
             # Run the container
-            exit_code, out, err = compose.run(job_test_name)
+            exit_code, out, err = t_compose.run()
 
             # Delete the test directory?
             # Not if there's an error
@@ -141,9 +231,7 @@ def _test(args: argparse.Namespace,
             expected_exit_code: int =\
                 job_definition.tests[job_test_name].checks.exitCode
 
-            if exit_code == expected_exit_code and not args.keep_results:
-                compose.delete(job_test_name)
-            elif exit_code != expected_exit_code:
+            if exit_code != expected_exit_code:
                 print(f'! FAILURE')
                 print(f'! exit_code={exit_code}'
                       f' expected_exit_code={expected_exit_code}')
@@ -151,10 +239,23 @@ def _test(args: argparse.Namespace,
                 print(out)
                 test_status = False
 
+            if args.verbose:
+                print(out)
+
         # Inspect the results
         # (only if successful so far)
-        if test_status and job_definition.tests[job_test_name].outputs:
-            print('Checking outputs')
+        if test_status and job_definition.tests[job_test_name].checks.outputs:
+            test_status = \
+                _check(t_compose,
+                       job_definition.tests[job_test_name].checks.outputs)
+
+        # Clean-up
+        if test_status:
+            t_compose.delete()
+
+        # Told to stop on first failure?
+        if not test_status and args.exit_on_failure:
+            break
 
     return test_status
 
@@ -187,13 +288,7 @@ def main() -> None:
                                  ' that match the collection will be'
                                  ' candidates for testing.')
 
-    arg_parser.add_argument('-i', '--image',
-                            help='An alternative container image to test,'
-                                 ' with a tag like "my-image:latest". If not'
-                                 ' specified the image and tag declared in the'
-                                 ' Job definition will be used.')
-
-    arg_parser.add_argument('-d', '--dry-run',
+    arg_parser.add_argument('-d', '--dry-run', action='store_true',
                             help='Setting this flag will result in jote'
                                  ' simply parsing the Job definitions'
                                  ' but not running any of the tests.'
@@ -201,12 +296,15 @@ def main() -> None:
                                  ' definition file and its test commands and'
                                  'data.')
 
-    arg_parser.add_argument('-k', '--keep-results',
+    arg_parser.add_argument('-k', '--keep-results', action='store_true',
                             help='Normally all material created to run each'
                                  ' test is removed when the test is'
                                  ' successful')
 
-    arg_parser.add_argument('-x', '--exit-on-failure',
+    arg_parser.add_argument('-v', '--verbose', action='store_true',
+                            help='Displays test stdout')
+
+    arg_parser.add_argument('-x', '--exit-on-failure', action='store_true',
                             help='Normally jote reports test failures but'
                                  ' continues with the next test.'
                                  ' Setting this flag will force jote to '
@@ -218,7 +316,8 @@ def main() -> None:
         arg_parser.error('--test requires --job')
     if args.job and args.collection is None:
         arg_parser.error('--job requires --collection')
-
+    if args.keep_results and args.dry_run:
+        arg_parser.error('Cannot use --dry-run and --keep-results')
     # Args are OK if we get here.
     test_fail_count: int = 0
 
@@ -227,29 +326,51 @@ def main() -> None:
 
     msg: str = 'test' if num_tests == 1 else 'tests'
     print(f'# Found {num_tests} {msg}')
+    if args.collection:
+        print(f'# Limiting to Collection {args.collection}')
+    if args.job:
+        print(f'# Limiting to Job {args.job}')
+    if args.test:
+        print(f'# Limiting to Test {args.test}')
 
     if job_definitions:
         # There is at least one job-definition with a test
         # Now process all the Jobs that have tests...
-        next_number: int = 0
         for job_definition in job_definitions:
+            # If a collection's been named,
+            # skip this file if it's not the named collection
+            collection: str = job_definition.collection
+            if args.collection and not args.collection == collection:
+                continue
+
             for job_name in job_definition.jobs:
+                # If a Job's been named,
+                # skip this test if the job does not match
+                if args.job and not args.job == job_name:
+                    continue
+
                 if job_definition.jobs[job_name].tests:
                     if not _test(args,
-                                 job_definition.collection,
+                                 collection,
                                  job_name,
                                  job_definition.jobs[job_name]):
                         test_fail_count += 1
+                        if args.exit_on_failure:
+                            break
+            if test_fail_count and args.exit_on_failure:
+                break
 
     num_tests_passed: int = num_tests - test_fail_count
     # Success or failure?
+    dry_run: str = '[DRY RUN]' if args.dry_run else ''
     if test_fail_count:
         print()
         arg_parser.error('Done (FAILURE)'
                          f' passed={num_tests_passed}'
-                         f' failed={test_fail_count}')
+                         f' failed={test_fail_count}'
+                         f' {dry_run}')
     else:
-        print("Done (Success) passed={num_tests_passed}")
+        print(f'Done (Success) passed={num_tests_passed} {dry_run}')
 
 
 # -----------------------------------------------------------------------------

@@ -45,12 +45,10 @@ there::
 This is a Python 3 utility, so try to run it from a recent (ideally 3.10)
 Python environment.
 
-To use the utility you will need to have installed `Docker`_
-and `docker-compose`_.
+To use the utility you will need to have installed `Docker`_.
 
 .. _PyPI: https://pypi.org/project/im-jote/
 .. _Docker: https://docs.docker.com/get-docker/
-.. _docker-compose: https://pypi.org/project/docker-compose/
 
 Running tests
 -------------
