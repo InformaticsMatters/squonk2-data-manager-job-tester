@@ -6,19 +6,22 @@ Data Manager Job implementation repositories against the Job's
 container image.
 
 Job implementations are required to provide a Job Definition (in the
-Job repository's ``data-manager`` directory) and at least one test, located in
-the repository's ``data-manager/tests`` directory. ``jote`` runs the tests
+Job repository's ``data-manager`` directory). The Job Definition should define
+at least one test for every Job in the file. ``jote`` runs the tests
 but also ensures the repository structure meets the Data Manager requirements.
 
-Tests are dined in the Job definition file in the block where the the test
-is defined. Here's a snippet illustrating a test called ``simple-execution``
-that defines an input option defining a file and some other command
-options along with a ``checks`` section that defines the exit criteria
-of a successful test::
+Tests are defined in the Job definition file. Here's a snippet illustrating a
+Job (``max-min-picker``) with a test called ``simple-execution``.
+
+The test defines an input option (a file) and some other command options.
+The ``checks`` section defines the exit criteria of a successful test.
+In this case the container must exit with code ``0`` and the file
+``diverse.smi`` must be found (in the mounted project directory), i.e
+it must *exist* and contain ``100`` lines::
 
     jobs:
       [...]
-      shard:
+      max-min-picker:
         [...]
         tests:
           simple-execution:

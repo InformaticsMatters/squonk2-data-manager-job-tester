@@ -59,6 +59,27 @@ def _lint(definition_file: str) -> bool:
     return True
 
 
+def _check_cwd() -> bool:
+    """Checks the execution directory for sanity (cwd). Here we must find
+    a .yamllint file and a data-manager directory?
+    """
+    expected_files: List[str] = [_YAMLLINT_FILE]
+    for expected_file in expected_files:
+        if not os.path.isfile(expected_file):
+            print(f'! Expected file "{expected_file}"'
+                  ' but it is not here')
+            return False
+
+    expected_directories: List[str] = [_DEFINITION_DIRECTORY]
+    for expected_directory in expected_directories:
+        if not os.path.isdir(expected_directory):
+            print(f'! Expected directory "{expected_directory}"'
+                  ' but it is not here')
+            return False
+
+    return True
+
+
 def _load(skip_lint: bool = False) -> Tuple[List[DefaultMunch], int]:
     """Loads definition files (all the YAML files in a given directory)
     and extracts the definitions that contain at least one test.
@@ -373,6 +394,12 @@ def main() -> None:
     # Args are OK if we get here.
     test_fail_count: int = 0
 
+    # Check CWD
+    if not _check_cwd():
+        print('! FAILURE')
+        print('! The directory does not look correct')
+        arg_parser.error('Done (FAILURE)')
+
     # Load all the files we can and then run the tests.
     job_definitions, num_tests = _load(args.skip_lint)
     if num_tests < 0:
@@ -417,15 +444,19 @@ def main() -> None:
                 break
 
     # Success or failure?
+    # It's an error to find no tests.
     print('  ---')
     num_tests_passed: int = num_tests - test_fail_count
     dry_run: str = '[DRY RUN]' if args.dry_run else ''
     if test_fail_count:
-        print()
         arg_parser.error('Done (FAILURE)'
                          f' passed={num_tests_passed}'
                          f' failed={test_fail_count}'
                          f' {dry_run}')
+    elif num_tests_passed == 0:
+        arg_parser.error('Done (FAILURE)'
+                         f' passed={num_tests_passed}'
+                         f' (at least one test must pass) {dry_run}')
     else:
         print(f'Done (OK) passed={num_tests_passed} {dry_run}')
 
