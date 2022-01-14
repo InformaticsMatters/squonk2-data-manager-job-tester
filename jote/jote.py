@@ -10,6 +10,8 @@ from typing import Any, Dict, List, Optional, Tuple
 
 from munch import DefaultMunch
 import yaml
+from yamllint import linter
+from yamllint.config import YamlLintConfig
 
 from decoder import decoder
 
@@ -17,6 +19,10 @@ from .compose import Compose
 
 # Where can we expect to find Job definitions?
 _DEFINITION_DIRECTORY: str = 'data-manager'
+
+# The yamllint configuration file of the repository under test.
+# Expected to be in the repo we're running from.
+_YAMLLINT_FILE: str = '.yamllint'
 
 
 def _print_test_banner(collection: str,
@@ -27,15 +33,41 @@ def _print_test_banner(collection: str,
     print(f'+ collection={collection} job={job_name} test={job_test_name}')
 
 
-def _load() -> Tuple[List[DefaultMunch], int]:
+def _lint(definition_file: str) -> bool:
+    """Lints the provided job definition file.
+    """
+
+    if not os.path.isfile(_YAMLLINT_FILE):
+        print(f'! The yamllint file ({_YAMLLINT_FILE}) is missing')
+        return False
+
+    errors = linter.run(definition_file, YamlLintConfig(file=_YAMLLINT_FILE))
+    if errors:
+        print(f'! Job definition "{definition_file}" fails yamllint: -')
+        for error in errors:
+            print(error)
+        return False
+
+    return True
+
+
+def _load(skip_lint: bool = False) -> Tuple[List[DefaultMunch], int]:
     """Loads definition files (all the YAML files in a given directory)
     and extracts the definitions that contain at least one test.
+
+    If there was a problem loading the files an empty list and
+    -ve count is returned.
     """
     job_definitions: List[DefaultMunch] = []
     num_tests: int = 0
 
     jd_filenames: List[str] = glob.glob(f'{_DEFINITION_DIRECTORY}/*.yaml')
     for jd_filename in jd_filenames:
+
+        if not skip_lint:
+            if not _lint(jd_filename):
+                return [], -1
+
         with open(jd_filename, 'r') as jd_file:
             jd: Dict[str, Any] = yaml.load(jd_file, Loader=yaml.FullLoader)
         if jd:
@@ -311,8 +343,14 @@ def main() -> None:
     arg_parser.add_argument('-x', '--exit-on-failure', action='store_true',
                             help='Normally jote reports test failures but'
                                  ' continues with the next test.'
-                                 ' Setting this flag will force jote to '
+                                 ' Setting this flag will force jote to'
                                  ' stop when it encounters the first failure')
+
+    arg_parser.add_argument('-s', '--skip-lint', action='store_true',
+                            help='Normally jote runs the job definition'
+                                 ' files against the prevailing lint'
+                                 ' configuration of the repository under test.'
+                                 ' Using this flag skips that step')
 
     args: argparse.Namespace = arg_parser.parse_args()
 
@@ -326,7 +364,11 @@ def main() -> None:
     test_fail_count: int = 0
 
     # Load all the files we can and then run the tests.
-    job_definitions, num_tests = _load()
+    job_definitions, num_tests = _load(args.skip_lint)
+    if num_tests < 0:
+        print('! FAILURE')
+        print('! Definition file has filed yamllint')
+        arg_parser.error('Done (FAILURE)')
 
     msg: str = 'test' if num_tests == 1 else 'tests'
     print(f'# Found {num_tests} {msg}')
