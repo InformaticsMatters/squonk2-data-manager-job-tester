@@ -12,7 +12,8 @@ from munch import DefaultMunch
 import yaml
 
 from decoder import decoder
-from compose import Compose
+
+from .compose import Compose
 
 # Where can we expect to find Job definitions?
 _DEFINITION_DIRECTORY: str = 'data-manager'
