@@ -76,15 +76,17 @@ def _check_exists(name: str, path: str, expected: bool) -> bool:
 
     exists: bool = os.path.exists(path)
     if expected and not exists:
+        print(f'#   exists ({expected}) [FAILED]')
         print('! FAILURE')
         print(f'! Check exists "{name}" (does not exist)')
         return False
     elif not expected and exists:
+        print(f'#   exists ({expected}) [FAILED]')
         print('! FAILURE')
         print(f'! Check does not exist "{name}" (exists)')
         return False
 
-    print(f'#   exists ({expected}) [ok]')
+    print(f'#   exists ({expected}) [OK]')
     return True
 
 
@@ -95,12 +97,13 @@ def _check_line_count(name: str, path: str, expected: int) -> bool:
         line_count += 1
 
     if line_count != expected:
+        print(f'#   lineCount ({line_count}) [FAILED]')
         print('! FAILURE')
         print(f'! Check lineCount {name}'
               f' (found {line_count}, expected {expected})')
         return False
 
-    print(f'#   lineCount ({line_count}) [ok]')
+    print(f'#   lineCount ({line_count}) [OK]')
     return True
 
 
