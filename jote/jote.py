@@ -41,12 +41,20 @@ def _lint(definition_file: str) -> bool:
         print(f'! The yamllint file ({_YAMLLINT_FILE}) is missing')
         return False
 
-    errors = linter.run(definition_file, YamlLintConfig(file=_YAMLLINT_FILE))
+    errors = linter.run(open(definition_file),
+                        YamlLintConfig(file=_YAMLLINT_FILE))
     if errors:
-        print(f'! Job definition "{definition_file}" fails yamllint: -')
+        # We're given a 'generator' and we don't know if there are errors
+        # until we iterator over it. So here we print an initial error message
+        # on the first error.
+        found_errors: bool = False
         for error in errors:
+            if not found_errors:
+                print(f'! Job definition "{definition_file}" fails yamllint: -')
+                found_errors = True
             print(error)
-        return False
+        if found_errors:
+            return False
 
     return True
 
@@ -280,7 +288,9 @@ def _test(args: argparse.Namespace,
 
         # Inspect the results
         # (only if successful so far)
-        if test_status and job_definition.tests[job_test_name].checks.outputs:
+        if test_status \
+                and not args.dry_run \
+                and job_definition.tests[job_test_name].checks.outputs:
             test_status = \
                 _check(t_compose,
                        job_definition.tests[job_test_name].checks.outputs)
@@ -367,7 +377,7 @@ def main() -> None:
     job_definitions, num_tests = _load(args.skip_lint)
     if num_tests < 0:
         print('! FAILURE')
-        print('! Definition file has filed yamllint')
+        print('! Definition file has failed yamllint')
         arg_parser.error('Done (FAILURE)')
 
     msg: str = 'test' if num_tests == 1 else 'tests'
