@@ -44,7 +44,7 @@ def _lint(definition_file: str) -> bool:
         print(f'! The yamllint file ({_YAMLLINT_FILE}) is missing')
         return False
 
-    errors = linter.run(open(definition_file),
+    errors = linter.run(open(definition_file, encoding='UTF-8'),
                         YamlLintConfig(file=_YAMLLINT_FILE))
     if errors:
         # We're given a 'generator' and we don't know if there are errors
@@ -104,7 +104,7 @@ def _load(skip_lint: bool = False) -> Tuple[List[DefaultMunch], int]:
             if not _lint(jd_filename):
                 return [], -1
 
-        with open(jd_filename, 'r') as jd_file:
+        with open(jd_filename, 'r', encoding='UTF-8') as jd_file:
             job_def: Dict[str, Any] = yaml.load(jd_file, Loader=yaml.FullLoader)
         if job_def:
             jd_munch: DefaultMunch = DefaultMunch.fromDict(job_def)
@@ -171,7 +171,7 @@ def _check_exists(name: str, path: str, expected: bool) -> bool:
 def _check_line_count(name: str, path: str, expected: int) -> bool:
 
     line_count: int = 0
-    for _ in open(path):
+    for _ in open(path, encoding='UTF-8'):
         line_count += 1
 
     if line_count != expected:
@@ -339,10 +339,10 @@ def _test(args: argparse.Namespace,
                 job_definition.tests[job_test_name].checks.exitCode
 
             if exit_code != expected_exit_code:
-                print(f'! FAILURE')
+                print('! FAILURE')
                 print(f'! exit_code={exit_code}'
                       f' expected_exit_code={expected_exit_code}')
-                print(f'! Container output follows...')
+                print('! Container output follows...')
                 print(out)
                 test_status = False
 
@@ -471,7 +471,7 @@ def main() -> int:
     # If so wipe, and leave.
     if args.wipe:
         _wipe()
-        print(f'Done [Wiped]')
+        print('Done [Wiped]')
         return 0
 
     # Load all the files we can and then run the tests.

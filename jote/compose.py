@@ -121,7 +121,7 @@ class Compose:
                                      'instance_directory': _INSTANCE_DIRECTORY}
         compose_content: str = _COMPOSE_CONTENT.format(**variables)
         compose_path: str = f'{test_path}/docker-compose.yml'
-        with open(compose_path, 'wt') as compose_file:
+        with open(compose_path, 'wt', encoding='UTF-8') as compose_file:
             compose_file.write(compose_content)
 
         print('# Created')
@@ -166,7 +166,7 @@ class Compose:
     def delete(self) -> None:
         """Deletes a test directory created by 'crete()'.
         """
-        print(f'# Deleting the test...')
+        print('# Deleting the test...')
 
         test_path: str = self.get_test_path()
         if os.path.exists(test_path):
