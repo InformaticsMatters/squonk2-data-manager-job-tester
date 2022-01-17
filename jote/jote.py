@@ -55,7 +55,7 @@ def _lint(definition_filename: str) -> bool:
         found_errors: bool = False
         for error in errors:
             if not found_errors:
-                print(f'! Job definition "{definition_file}" fails yamllint: -')
+                print(f'! Job definition "{definition_file}" fails yamllint:')
                 found_errors = True
             print(error)
         if found_errors:
