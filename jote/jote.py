@@ -86,7 +86,10 @@ def _check_cwd() -> bool:
 
 def _load(skip_lint: bool = False) -> Tuple[List[DefaultMunch], int]:
     """Loads definition files (all the YAML files in a given directory)
-    and extracts the definitions that contain at least one test.
+    and extracts the definitions that contain at least one test. The
+    definition blocks for those that have tests (ignored or otherwise)
+    are returned along with a count of the number of tests found
+    (ignored or otherwise).
 
     If there was a problem loading the files an empty list and
     -ve count is returned.
@@ -225,14 +228,21 @@ def _check(t_compose: Compose,
 def _test(args: argparse.Namespace,
           collection: str,
           job: str,
-          job_definition: DefaultMunch) -> bool:
-    """Runs test for a specific Job definition returning True on success.
+          job_definition: DefaultMunch) -> Tuple[int, int, int]:
+    """Runs the tests for a specific Job definition returning True on success.
+    If an individual test is marked as 'ignored' it will not be processed,
+    and will not be counted.
+
+    The function returns a tuple containing the count of the number of tests
+    that passed, were ignored and those that failed.
     """
     assert job_definition
     assert isinstance(job_definition, DefaultMunch)
 
     # The test status, assume success
-    test_status: bool = True
+    tests_passed: int = 0
+    tests_ignored: int = 0
+    tests_failed: int = 0
 
     job_image: str = f'{job_definition.image.name}:{job_definition.image.tag}'
     job_project_directory: str = job_definition.image['project-directory']
@@ -240,14 +250,19 @@ def _test(args: argparse.Namespace,
 
     for job_test_name in job_definition.tests:
 
-        test_status = True
-
         # If a job test has been named,
-        # skip this test if it doesn't match
+        # skip this test if it doesn't match.
+        # We do not include this test in the count.
         if args.test and not args.test == job_test_name:
             continue
 
         _print_test_banner(collection, job, job_test_name)
+
+        # Does the test have an 'ignore' declaration?
+        if 'ignore' in job_definition.tests[job_test_name]:
+            print('W Ignoring test (found "ignore")')
+            tests_ignored += 1
+            continue
 
         # Render the command for this test.
         # First extract the variables and values from 'options'
@@ -275,6 +290,9 @@ def _test(args: argparse.Namespace,
             print('! FAILURE')
             print('! Failed to render command')
             print(f'! error={decoded_command}')
+            # Record but do no further processing
+            tests_failed += 1
+            test_status = False
 
         # The command must not contain new-lines.
         # So split then join the command.
@@ -343,11 +361,17 @@ def _test(args: argparse.Namespace,
         if test_status and not args.keep_results:
             t_compose.delete()
 
+        # Count?
+        if test_status:
+            tests_passed += 1
+        else:
+            tests_failed += 1
+
         # Told to stop on first failure?
         if not test_status and args.exit_on_failure:
             break
 
-    return test_status
+    return tests_passed, tests_ignored, tests_failed
 
 
 def _wipe() -> None:
@@ -428,7 +452,8 @@ def main() -> None:
         arg_parser.error('--job requires --collection')
 
     # Args are OK if we get here.
-    test_fail_count: int = 0
+    total_fail_count: int = 0
+    total_ignore_count: int = 0
 
     # Check CWD
     if not _check_cwd():
@@ -476,29 +501,38 @@ def main() -> None:
                     continue
 
                 if job_definition.jobs[job_name].tests:
-                    if not _test(args,
-                                 collection,
-                                 job_name,
-                                 job_definition.jobs[job_name]):
-                        test_fail_count += 1
-                        if args.exit_on_failure:
-                            break
-            if test_fail_count and args.exit_on_failure:
+                    num_passed, num_ignored, num_failed =\
+                        _test(args,
+                              collection,
+                              job_name,
+                              job_definition.jobs[job_name])
+                    total_ignore_count += num_ignored
+                    total_fail_count += num_failed
+
+                    # Break out of this loop if told to stop on failures
+                    if num_failed > 0 and args.exit_on_failure:
+                        break
+
+            # Break out of this loop if told to stop on failures
+            if num_failed > 0 and args.exit_on_failure:
                 break
 
     # Success or failure?
     # It's an error to find no tests.
     print('  ---')
-    num_tests_passed: int = num_tests - test_fail_count
+    num_tests_passed: int = num_tests - total_fail_count - total_ignore_count
     dry_run: str = '[DRY RUN]' if args.dry_run else ''
-    if test_fail_count:
+    if total_fail_count:
         arg_parser.error('Done (FAILURE)'
                          f' passed={num_tests_passed}'
-                         f' failed={test_fail_count}'
+                         f' ignored={total_ignore_count}'
+                         f' failed={total_fail_count}'
                          f' {dry_run}')
     elif num_tests_passed == 0:
         arg_parser.error('Done (FAILURE)'
                          f' passed={num_tests_passed}'
+                         f' ignored={total_ignore_count}'
+                         f' failed=0'
                          f' (at least one test must pass) {dry_run}')
     else:
         print(f'Done (OK) passed={num_tests_passed} {dry_run}')
