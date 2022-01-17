@@ -36,7 +36,7 @@ def _print_test_banner(collection: str,
     print(f'+ collection={collection} job={job_name} test={job_test_name}')
 
 
-def _lint(definition_file: str) -> bool:
+def _lint(definition_filename: str) -> bool:
     """Lints the provided job definition file.
     """
 
@@ -44,8 +44,10 @@ def _lint(definition_file: str) -> bool:
         print(f'! The yamllint file ({_YAMLLINT_FILE}) is missing')
         return False
 
-    errors = linter.run(open(definition_file, encoding='UTF-8'),
-                        YamlLintConfig(file=_YAMLLINT_FILE))
+    with open(definition_filename, 'rt', encoding='UTF-8') as definition_file:
+        errors = linter.run(definition_file,
+                            YamlLintConfig(file=_YAMLLINT_FILE))
+
     if errors:
         # We're given a 'generator' and we don't know if there are errors
         # until we iterator over it. So here we print an initial error message
@@ -171,8 +173,9 @@ def _check_exists(name: str, path: str, expected: bool) -> bool:
 def _check_line_count(name: str, path: str, expected: int) -> bool:
 
     line_count: int = 0
-    for _ in open(path, encoding='UTF-8'):
-        line_count += 1
+    with open(path, 'rt', encoding='UTF-8') as check_file:
+        for _ in check_file:
+            line_count += 1
 
     if line_count != expected:
         print(f'#   lineCount ({line_count}) [FAILED]')
