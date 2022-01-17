@@ -35,14 +35,13 @@ _DEFAULT_TEST_TIMEOUT: int = 30 * 60
 
 def _get_docker_compose_version() -> str:
 
-    result: subprocess.CompletedProcess =\
-        subprocess.run(['docker-compose', 'version'],
-                       capture_output=True, timeout=4)
+    result = subprocess.run(['docker-compose', 'version'],
+                            capture_output=True, check=False, timeout=4)
 
     # stdout will contain the version on the first line: -
     # "docker-compose version 1.29.2, build unknown"
     # Ignore the first 23 characters of the first line...
-    return result.stdout.decode("utf-8").split('\n')[0][23:]
+    return str(result.stdout.decode("utf-8").split('\n')[0][23:])
 
 
 def get_test_root() -> str:
@@ -53,6 +52,9 @@ def get_test_root() -> str:
 
 
 class Compose:
+    """A class handling the execution of 'docker-compose'
+    for an individual test.
+    """
 
     # The docker-compose version (for the first test)
     _COMPOSE_VERSION: Optional[str] = None
@@ -104,7 +106,7 @@ class Compose:
             print(f'# docker-compose ({Compose._COMPOSE_VERSION})')
 
         # Make the test directory...
-        test_path: str = self.get_test_path()
+        test_path = self.get_test_path()
         project_path: str = self.get_test_project_path()
         inst_path: str = f'{project_path}/{_INSTANCE_DIRECTORY}'
         if not os.path.exists(inst_path):
@@ -142,15 +144,16 @@ class Compose:
         try:
             # Run the container
             # and then cleanup
-            test: subprocess.CompletedProcess =\
-                subprocess.run(['docker-compose', 'up',
-                                '--exit-code-from', 'job',
-                                '--abort-on-container-exit'],
-                               capture_output=True,
-                               timeout=timeout)
+            test = subprocess.run(['docker-compose', 'up',
+                                   '--exit-code-from', 'job',
+                                   '--abort-on-container-exit'],
+                                  capture_output=True,
+                                  timeout=timeout,
+                                  check=False)
             _ = subprocess.run(['docker-compose', 'down'],
                                capture_output=True,
-                               timeout=120)
+                               timeout=120,
+                               check=False)
         finally:
             os.chdir(cwd)
 

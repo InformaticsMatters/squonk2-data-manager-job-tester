@@ -29,7 +29,7 @@ setup(
     author_email='achristie@informaticsmatters.com',
     url='https://github.com/informaticsmatters/data-manager-job-tester',
     license=copyright,
-    description='test',
+    description='The IM Data Manager Job Tester (jote)',
     long_description=get_long_description(),
     keywords='configuration',
     platforms=['any'],

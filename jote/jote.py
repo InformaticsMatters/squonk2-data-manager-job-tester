@@ -20,11 +20,11 @@ from .compose import Compose
 
 # Where can we expect to find Job definitions?
 _DEFINITION_DIRECTORY: str = 'data-manager'
-# Data directory
+# Where can we expect to find test data?
 _DATA_DIRECTORY: str = 'data'
 
 # The yamllint configuration file of the repository under test.
-# Expected to be in the repo we're running from.
+# It must exist in the root of the repo we're running in.
 _YAMLLINT_FILE: str = '.yamllint'
 
 
@@ -105,9 +105,9 @@ def _load(skip_lint: bool = False) -> Tuple[List[DefaultMunch], int]:
                 return [], -1
 
         with open(jd_filename, 'r') as jd_file:
-            jd: Dict[str, Any] = yaml.load(jd_file, Loader=yaml.FullLoader)
-        if jd:
-            jd_munch: DefaultMunch = DefaultMunch.fromDict(jd)
+            job_def: Dict[str, Any] = yaml.load(jd_file, Loader=yaml.FullLoader)
+        if job_def:
+            jd_munch: DefaultMunch = DefaultMunch.fromDict(job_def)
             for jd_name in jd_munch.jobs:
                 if jd_munch.jobs[jd_name].tests:
                     num_tests += len(jd_munch.jobs[jd_name].tests)
@@ -158,7 +158,7 @@ def _check_exists(name: str, path: str, expected: bool) -> bool:
         print('! FAILURE')
         print(f'! Check exists "{name}" (does not exist)')
         return False
-    elif not expected and exists:
+    if not expected and exists:
         print(f'#   exists ({expected}) [FAILED]')
         print('! FAILURE')
         print(f'! Check does not exist "{name}" (exists)')
@@ -329,7 +329,8 @@ def _test(args: argparse.Namespace,
         # Run the container
         if test_status and not args.dry_run:
             # Run the container
-            exit_code, out, err = t_compose.run()
+            assert t_compose
+            exit_code, out, _ = t_compose.run()
 
             # Delete the test directory?
             # Not if there's an error
@@ -353,12 +354,15 @@ def _test(args: argparse.Namespace,
         if test_status \
                 and not args.dry_run \
                 and job_definition.tests[job_test_name].checks.outputs:
+
+            assert t_compose
             test_status = \
                 _check(t_compose,
                        job_definition.tests[job_test_name].checks.outputs)
 
         # Clean-up
         if test_status and not args.keep_results:
+            assert t_compose
             t_compose.delete()
 
         # Count?
@@ -383,7 +387,7 @@ def _wipe() -> None:
 # -----------------------------------------------------------------------------
 # main
 # -----------------------------------------------------------------------------
-def main() -> None:
+def main() -> int:
     """The console script entry-point. Called when jote is executed
     or from __main__.py, which is used by the installed console script.
     """
@@ -468,7 +472,7 @@ def main() -> None:
     if args.wipe:
         _wipe()
         print(f'Done [Wiped]')
-        return
+        return 0
 
     # Load all the files we can and then run the tests.
     job_definitions, num_tests = _load(args.skip_lint)
@@ -503,7 +507,7 @@ def main() -> None:
                     continue
 
                 if job_definition.jobs[job_name].tests:
-                    num_passed, num_ignored, num_failed =\
+                    _, num_ignored, num_failed =\
                         _test(args,
                               collection,
                               job_name,
@@ -546,6 +550,8 @@ def main() -> None:
     # and not told to keep directories.
     if total_fail_count == 0 and not args.keep_results:
         _wipe()
+
+    return 0
 
 
 # -----------------------------------------------------------------------------

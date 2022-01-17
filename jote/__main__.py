@@ -9,7 +9,7 @@ import sys
 from .jote import main as jote_main
 
 
-def main():
+def main() -> int:
     """The entry-point of the component."""
     return jote_main()
 

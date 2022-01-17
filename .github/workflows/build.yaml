@@ -41,6 +41,8 @@ jobs:
         pip install -r package-requirements.txt
     - name: Test
       run: |
+        pylint jote
+        mypy jote --install-types --non-interactive
         pyroma .
     - name: Build
       run: |
