@@ -520,22 +520,30 @@ def main() -> None:
     # Success or failure?
     # It's an error to find no tests.
     print('  ---')
-    num_tests_passed: int = num_tests - total_fail_count - total_ignore_count
+    total_pass_count: int = num_tests - total_fail_count - total_ignore_count
     dry_run: str = '[DRY RUN]' if args.dry_run else ''
     if total_fail_count:
         arg_parser.error('Done (FAILURE)'
-                         f' passed={num_tests_passed}'
+                         f' passed={total_pass_count}'
                          f' ignored={total_ignore_count}'
                          f' failed={total_fail_count}'
                          f' {dry_run}')
-    elif num_tests_passed == 0:
+    elif total_pass_count == 0:
         arg_parser.error('Done (FAILURE)'
-                         f' passed={num_tests_passed}'
+                         f' passed={total_pass_count}'
                          f' ignored={total_ignore_count}'
                          f' failed=0'
                          f' (at least one test must pass) {dry_run}')
     else:
-        print(f'Done (OK) passed={num_tests_passed} {dry_run}')
+        print(f'Done (OK)'
+              f' passed={total_pass_count}'
+              f' ignored={total_ignore_count} {dry_run}')
+
+    # Automatically wipe.
+    # If there have been no failures
+    # and not told to keep directories.
+    if total_fail_count == 0 and not args.keep_results:
+        _wipe()
 
 
 # -----------------------------------------------------------------------------
