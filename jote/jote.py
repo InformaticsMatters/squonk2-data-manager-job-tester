@@ -450,6 +450,8 @@ def main() -> None:
         arg_parser.error('--test requires --job')
     if args.job and args.collection is None:
         arg_parser.error('--job requires --collection')
+    if args.wipe and args.keep_results:
+        arg_parser.error('Cannot use --wipe and --keep-results')
 
     # Args are OK if we get here.
     total_fail_count: int = 0
