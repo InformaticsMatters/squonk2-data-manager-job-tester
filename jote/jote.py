@@ -15,10 +15,13 @@ from yamllint.config import YamlLintConfig
 
 from decoder import decoder
 
+from .compose import get_test_root
 from .compose import Compose
 
 # Where can we expect to find Job definitions?
 _DEFINITION_DIRECTORY: str = 'data-manager'
+# Data directory
+_DATA_DIRECTORY: str = 'data'
 
 # The yamllint configuration file of the repository under test.
 # Expected to be in the repo we're running from.
@@ -70,7 +73,8 @@ def _check_cwd() -> bool:
                   ' but it is not here')
             return False
 
-    expected_directories: List[str] = [_DEFINITION_DIRECTORY]
+    expected_directories: List[str] = [_DEFINITION_DIRECTORY,
+                                       _DATA_DIRECTORY]
     for expected_directory in expected_directories:
         if not os.path.isdir(expected_directory):
             print(f'! Expected directory "{expected_directory}"'
@@ -113,19 +117,29 @@ def _load(skip_lint: bool = False) -> Tuple[List[DefaultMunch], int]:
 def _copy_inputs(test_inputs: DefaultMunch,
                  project_path: str) -> bool:
     """Copies all the test files into the test project directory.
-    Files are expected to reside in the repo's 'data' directory.
+    Files are expected to reside in the repo's 'data' directory
+    and must begin 'data/'
     """
 
     # The files are assumed to reside in the repo's 'data' directory.
-    print('# Copying inputs...')
+    print(f'# Copying inputs (from "${{PWD}}/{_DATA_DIRECTORY}")...')
 
+    expected_prefix: str = f'{_DATA_DIRECTORY}/'
     for test_input in test_inputs:
-        test_file: str = os.path.join('data', test_inputs[test_input])
+
+        test_file: str = test_inputs[test_input]
         print(f'# + {test_file} ({test_input})')
+
+        if not test_file.startswith(expected_prefix):
+            print('! FAILURE')
+            print(f'! Input file {test_file} must start with "{expected_prefix}"')
+            return False
         if not os.path.isfile(test_file):
             print('! FAILURE')
-            print(f'! missing input file {test_file} ({test_input})')
+            print(f'! Missing input file {test_file} ({test_input})')
             return False
+
+        # Looks OK, copy it
         shutil.copy(test_file, project_path)
 
     print('# Copied')
@@ -236,18 +250,23 @@ def _test(args: argparse.Namespace,
         _print_test_banner(collection, job, job_test_name)
 
         # Render the command for this test.
-        # First extract the variables and values form options and inputs...
+        # First extract the variables and values from 'options'
+        # and then 'inputs'...
         job_variables: Dict[str, Any] = {}
         for variable in job_definition.tests[job_test_name].options:
             job_variables[variable] =\
                 job_definition.tests[job_test_name].options[variable]
+        # We only pass the basename of the input to the command decoding
+        # i.e. strip the source directory.
         for variable in job_definition.tests[job_test_name].inputs:
             job_variables[variable] =\
-                job_definition.tests[job_test_name].inputs[variable]
-        # Get the raw (encoded) command
+                os.path.basename(job_definition.tests[job_test_name]
+                                 .inputs[variable])
+
+        # Get the raw (encoded) command from the job definition...
         raw_command: str = job_definition.command
-        # Apply the rendering...
-        job_command, test_status =\
+        # Decode it using our variables...
+        decoded_command, test_status =\
             decoder.decode(raw_command,
                            job_variables,
                            'command',
@@ -255,7 +274,11 @@ def _test(args: argparse.Namespace,
         if not test_status:
             print('! FAILURE')
             print('! Failed to render command')
-            print('! error={job_command}')
+            print(f'! error={decoded_command}')
+
+        # The command must not contain new-lines.
+        # So split then join the command.
+        job_command: str = ''.join(decoded_command.splitlines())
 
         # Create the test directories, docker-compose file
         # and copy inputs...
@@ -317,7 +340,7 @@ def _test(args: argparse.Namespace,
                        job_definition.tests[job_test_name].checks.outputs)
 
         # Clean-up
-        if test_status:
+        if test_status and not args.keep_results:
             t_compose.delete()
 
         # Told to stop on first failure?
@@ -325,6 +348,12 @@ def _test(args: argparse.Namespace,
             break
 
     return test_status
+
+
+def _wipe() -> None:
+    """Wipes the results of all tests.
+    """
+    shutil.rmtree(get_test_root())
 
 
 # -----------------------------------------------------------------------------
@@ -383,14 +412,21 @@ def main() -> None:
                                  ' configuration of the repository under test.'
                                  ' Using this flag skips that step')
 
+    arg_parser.add_argument('-w', '--wipe', action='store_true',
+                            help='Wipe does nto run any tests, it simply'
+                                 ' wipes the repository clean of jote'
+                                 ' test material. It would be wise'
+                                 ' to run this once you have finished testing.'
+                                 ' Using this negates the effect of any other'
+                                 ' option.')
+
     args: argparse.Namespace = arg_parser.parse_args()
 
     if args.test and args.job is None:
         arg_parser.error('--test requires --job')
     if args.job and args.collection is None:
         arg_parser.error('--job requires --collection')
-    if args.keep_results and args.dry_run:
-        arg_parser.error('Cannot use --dry-run and --keep-results')
+
     # Args are OK if we get here.
     test_fail_count: int = 0
 
@@ -399,6 +435,13 @@ def main() -> None:
         print('! FAILURE')
         print('! The directory does not look correct')
         arg_parser.error('Done (FAILURE)')
+
+    # Told to wipe?
+    # If so wipe, and leave.
+    if args.wipe:
+        _wipe()
+        print(f'Done [Wiped]')
+        return
 
     # Load all the files we can and then run the tests.
     job_definitions, num_tests = _load(args.skip_lint)

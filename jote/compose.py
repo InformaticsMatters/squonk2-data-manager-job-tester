@@ -45,6 +45,13 @@ def _get_docker_compose_version() -> str:
     return result.stdout.decode("utf-8").split('\n')[0][23:]
 
 
+def get_test_root() -> str:
+    """Returns the root of the testing directory.
+    """
+    cwd: str = os.getcwd()
+    return f'{cwd}/data-manager/jote'
+
+
 class Compose:
 
     # The docker-compose version (for the first test)
@@ -69,8 +76,8 @@ class Compose:
     def get_test_path(self) -> str:
         """Returns the path to the root directory for a given test.
         """
-        cwd: str = os.getcwd()
-        return f'{cwd}/data-manager/jote/{self._collection}.{self._job}.{self._test}'
+        root: str = get_test_root()
+        return f'{root}/{self._collection}.{self._job}.{self._test}'
 
     def get_test_project_path(self) -> str:
         """Returns the path to the root directory for a given test.
@@ -147,7 +154,7 @@ class Compose:
         finally:
             os.chdir(cwd)
 
-        print(f'# Executed ({test.returncode})')
+        print(f'# Executed (exit code {test.returncode})')
 
         return test.returncode,\
             test.stdout.decode("utf-8"),\
