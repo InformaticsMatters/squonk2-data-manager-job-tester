@@ -92,7 +92,7 @@ def _validate_schema(definition_filename: str) -> bool:
     except jsonschema.ValidationError as ex:
         print(f'! Job definition "{definition_filename}"'
               ' does not comply with schema')
-        print(f'! Errors is "{ex.message}"')
+        print(f'! Error is "{ex.message}"')
         print('! Full response follows:')
         print(ex)
         return False
