@@ -1,0 +1,180 @@
+---
+# The JSONSchema for the 'JobDefinition' (JD) YAML files.
+#
+# See https://json-schema.org/understanding-json-schema/index.html
+
+$schema: http://json-schema.org/draft-07/schema#
+
+title: Data Manager Job Definition
+description: >-
+  Defines one or more jobs that can be executed
+  by the Data manager Job Operator
+
+type: object
+properties:
+  kind:
+    const: DataManagerJobDefinition
+  kind-version:
+    enum:
+    - '2021.1'
+  name:
+    type: string
+    maxLength: 80
+  description:
+    tyep: string
+  collection:
+    type: string
+    minLength: 1
+    maxLength: 80
+    pattern: '^[a-z]{1}[a-z0-9-]*$'
+  repository-url:
+    type: string
+    maxlength: 2048
+    format: uri
+  repository-tag:
+    type: string
+    minLength: 1
+    maxLength: 24
+  jobs:
+    $ref: '#/definitions/job-identity'
+required:
+- kind
+- kind-version
+- collection
+- repository-url
+- repository-tag
+- jobs
+
+# Sub-object definitions ------------------------------------------------------
+# Things like the Job structure, Image structure etc.
+
+definitions:
+
+  # A Job.
+  # Consists of an identity (i.e. 'filter-molecules')
+  # followed by a Job object.
+  job-identity:
+    type: object
+    patternProperties:
+      '^[a-z]{1}[a-z0-9-]{0,79}$':
+        $ref: '#/definitions/job'
+    additionalProperties: false
+    minProperties: 1
+
+  # An individual Job
+  job:
+    type: object
+    properties:
+      name:
+        type: string
+        minLength: 1
+        maxLength: 80
+      description:
+        type: string
+      version:
+        type: string
+        minLength: 1
+        maxLength: 24
+      category:
+        type: string
+      doc-url:
+        type: string
+      keywords:
+        type: array
+        items:
+          type: string
+      image:
+        $ref: '#/definitions/image'
+      command-encoding:
+        const: JINJA2_3_0
+      command:
+        type: string
+        minLength: 1
+        maxLength: 4096
+    required:
+    - version
+    - image
+    - command
+    - name
+
+  # A Job container image
+  # The 'type' is optional and is used to indicate
+  # a single job _image_ (the default) or a workflow image like _nextflow_
+  image:
+    type: object
+    additionalProperties: false
+    properties:
+      name:
+        type: string
+        minLength: 1
+        maxLenght: 120
+      tag:
+        type: string
+        minLength: 1
+        maxLength: 24
+      project-directory:
+        type: string
+        minLength: 1
+        maxLength: 255
+        pattern: '^(/[a-zA-Z0-9_-]+)+$'
+      working-directory:
+        type: string
+        minLength: 1
+        maxLength: 255
+        pattern: '^(/[a-zA-Z0-9_-]+)+$'
+      type:
+        type: string
+        enum:
+        - simple
+        - nextflow
+        default: simple
+      environment:
+        $ref: '#/definitions/environment'
+    required:
+    - name
+    - tag
+    - project-directory
+
+  # Image environment definitions.
+  environment:
+    type: array
+    items:
+      anyOf:
+      - $ref: '#/definitions/environment-value-from-api-token'
+
+  # An Image environment from an 'api-token'.
+  # Roles is an optional list of API token realm roles where, for now,
+  # we limit the number in the list to a maximum 1.
+  environment-value-from-api-token:
+    type: object
+    additionalProperties: false
+    properties:
+      name:
+        $ref: '#/definitions/environment-name'
+      value-from:
+        type: object
+        properties:
+          api-token:
+            type: object
+            properties:
+              roles:
+                type: array
+                items:
+                  type: string
+                  pattern: '^[a-z]{1,}[a-z-_]{0,}$'
+                minItems: 0
+                maxItems: 1
+                uniqueItems: true
+        required:
+        - api-token
+    required:
+    - name
+    - value-from
+
+  # The pattern for Image environment names.
+  # Classic linux/shell,
+  # i.e. letters, digits and '_' and must begin letter or '_'
+  environment-name:
+    type: string
+    minLength: 1
+    pattern: '^[a-zA-Z_]{1,}[a-zA-Z0-9_]{0,}$'

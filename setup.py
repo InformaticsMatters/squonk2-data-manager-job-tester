@@ -35,6 +35,7 @@ setup(
     platforms=['any'],
     # Our modules to package
     packages=find_packages(exclude=["*.test", "*.test.*", "test.*", "test"]),
+    include_package_data=True,
 
     # Project classification:
     # https://pypi.python.org/pypi?%3Aaction=list_classifiers

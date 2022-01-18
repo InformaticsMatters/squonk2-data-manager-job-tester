@@ -8,6 +8,7 @@ import os
 import shutil
 from typing import Any, Dict, List, Optional, Tuple
 
+import jsonschema
 from munch import DefaultMunch
 import yaml
 from yamllint import linter
@@ -26,6 +27,18 @@ _DATA_DIRECTORY: str = 'data'
 # The yamllint configuration file of the repository under test.
 # It must exist in the root of the repo we're running in.
 _YAMLLINT_FILE: str = '.yamllint'
+
+# The (built-in) Job Definition schema...
+# from the same directory as ours.
+_SCHEMA_FILE: str = os.path.join(os.path.dirname(__file__), 'schema.yaml')
+
+# Load the schema YAML file now.
+# This must work as the file is installed along with this module.
+_JOB_SCHEMA: Dict[str, Any] = {}
+assert os.path.isfile(_SCHEMA_FILE)
+with open(_SCHEMA_FILE, 'r', encoding='utf8') as schema_file:
+    _JOB_SCHEMA = yaml.load(schema_file, Loader=yaml.FullLoader)
+assert _JOB_SCHEMA
 
 
 def _print_test_banner(collection: str,
@@ -60,6 +73,29 @@ def _lint(definition_filename: str) -> bool:
             print(error)
         if found_errors:
             return False
+
+    return True
+
+
+def _validate_schema(definition_filename: str) -> bool:
+    """Checks the Job Definition against the built-in schema.
+    """
+
+    with open(definition_filename, 'rt', encoding='UTF-8') as definition_file:
+        job_def: Optional[Dict[str, Any]] =\
+            yaml.load(definition_file, Loader=yaml.FullLoader)
+    assert job_def
+
+    # Validate the Job Definition against our schema
+    try:
+        jsonschema.validate(job_def, schema=_JOB_SCHEMA)
+    except jsonschema.ValidationError as ex:
+        print(f'! Job definition "{definition_filename}"'
+              ' does not comply with schema')
+        print(f'! Errors is "{ex.message}"')
+        print('! Full response follows:')
+        print(ex)
+        return False
 
     return True
 
@@ -102,9 +138,15 @@ def _load(skip_lint: bool = False) -> Tuple[List[DefaultMunch], int]:
     jd_filenames: List[str] = glob.glob(f'{_DEFINITION_DIRECTORY}/*.yaml')
     for jd_filename in jd_filenames:
 
+        # Does the definition comply with the dschema,
+        # no options here - it must.
+        if not _validate_schema(jd_filename):
+            return [], -1
+
+        # YAML-lint the definition?
         if not skip_lint:
             if not _lint(jd_filename):
-                return [], -1
+                return [], -2
 
         with open(jd_filename, 'r', encoding='UTF-8') as jd_file:
             job_def: Dict[str, Any] = yaml.load(jd_file, Loader=yaml.FullLoader)
