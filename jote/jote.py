@@ -74,7 +74,7 @@ def _validate_schema(definition_filename: str) -> bool:
     assert job_def
 
     # If the decoder returns something there's been an error.
-    error: Optional[str] = decoder.validate_schema(job_def)
+    error: Optional[str] = decoder.validate_job_schema(job_def)
     if error:
         print(f'! Job definition "{definition_filename}"'
               ' does not comply with schema')
