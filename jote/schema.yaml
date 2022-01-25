@@ -128,8 +128,10 @@ definitions:
         - simple
         - nextflow
         default: simple
+      pull-secret:
+        $ref: '#/definitions/rfc-1035-name'
       environment:
-        $ref: '#/definitions/environment'
+        $ref: '#/definitions/env-var-name'
     required:
     - name
     - tag
@@ -174,7 +176,14 @@ definitions:
   # The pattern for Image environment names.
   # Classic linux/shell,
   # i.e. letters, digits and '_' and must begin letter or '_'
-  environment-name:
+  env-var-name:
     type: string
     minLength: 1
     pattern: '^[a-zA-Z_]{1,}[a-zA-Z0-9_]{0,}$'
+
+  # The pattern for RFC 1035 label names.
+  rfc-1035-name:
+    type: string
+    minLength: 1
+    maxLength: 63
+    pattern: '^[a-z]([a-z0-9-]*[a-z0-9])?$'
