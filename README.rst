@@ -1,8 +1,8 @@
 Informatics Matters Job Tester
 ==============================
 
-.. image:: https://badge.fury.io/py/im-data-manager-job-tester.svg
-   :target: https://badge.fury.io/py/im-data-manager-job-tester
+.. image:: https://badge.fury.io/py/im-jote.svg
+   :target: https://badge.fury.io/py/im-jote
    :alt: PyPI package (latest)
 
 The Job Tester (``jote``) is used to run unit tests located in
