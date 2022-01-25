@@ -8,7 +8,6 @@ import os
 import shutil
 from typing import Any, Dict, List, Optional, Tuple
 
-import jsonschema
 from munch import DefaultMunch
 import yaml
 from yamllint import linter
@@ -27,18 +26,6 @@ _DATA_DIRECTORY: str = 'data'
 # The yamllint configuration file of the repository under test.
 # It must exist in the root of the repo we're running in.
 _YAMLLINT_FILE: str = '.yamllint'
-
-# The (built-in) Job Definition schema...
-# from the same directory as ours.
-_SCHEMA_FILE: str = os.path.join(os.path.dirname(__file__), 'schema.yaml')
-
-# Load the schema YAML file now.
-# This must work as the file is installed along with this module.
-_JOB_SCHEMA: Dict[str, Any] = {}
-assert os.path.isfile(_SCHEMA_FILE)
-with open(_SCHEMA_FILE, 'r', encoding='utf8') as schema_file:
-    _JOB_SCHEMA = yaml.load(schema_file, Loader=yaml.FullLoader)
-assert _JOB_SCHEMA
 
 
 def _print_test_banner(collection: str,
@@ -78,7 +65,7 @@ def _lint(definition_filename: str) -> bool:
 
 
 def _validate_schema(definition_filename: str) -> bool:
-    """Checks the Job Definition against the built-in schema.
+    """Checks the Job Definition against the decoder's schema.
     """
 
     with open(definition_filename, 'rt', encoding='UTF-8') as definition_file:
@@ -86,15 +73,13 @@ def _validate_schema(definition_filename: str) -> bool:
             yaml.load(definition_file, Loader=yaml.FullLoader)
     assert job_def
 
-    # Validate the Job Definition against our schema
-    try:
-        jsonschema.validate(job_def, schema=_JOB_SCHEMA)
-    except jsonschema.ValidationError as ex:
+    # If the decoder returns something there's been an error.
+    error: Optional[str] = decoder.validate_schema(job_def)
+    if error:
         print(f'! Job definition "{definition_filename}"'
               ' does not comply with schema')
-        print(f'! Error is "{ex.message}"')
         print('! Full response follows:')
-        print(ex)
+        print(error)
         return False
 
     return True
