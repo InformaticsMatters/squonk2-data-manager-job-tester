@@ -1,6 +1,10 @@
 Informatics Matters Job Tester
 ==============================
 
+.. image:: https://badge.fury.io/py/im-data-manager-job-tester.svg
+   :target: https://badge.fury.io/py/im-data-manager-job-tester
+   :alt: PyPI package (latest)
+
 The Job Tester (``jote``) is used to run unit tests located in
 Data Manager Job implementation repositories against the Job's
 container image.
