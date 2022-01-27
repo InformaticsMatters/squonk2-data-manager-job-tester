@@ -411,7 +411,9 @@ def _test(args: argparse.Namespace,
 def _wipe() -> None:
     """Wipes the results of all tests.
     """
-    shutil.rmtree(get_test_root())
+    test_root: str = get_test_root()
+    if os.path.isdir(test_root):
+        shutil.rmtree(test_root)
 
 
 # -----------------------------------------------------------------------------
