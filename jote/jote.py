@@ -446,9 +446,9 @@ def main() -> int:
                             help='Setting this flag will result in jote'
                                  ' simply parsing the Job definitions'
                                  ' but not running any of the tests.'
-                                 ' It is can be used to check validate your'
-                                 ' definition file and its test commands and'
-                                 'data.')
+                                 ' It is can be used to check the syntax of'
+                                 ' your definition file and its test commands'
+                                 ' and data.')
 
     arg_parser.add_argument('-k', '--keep-results', action='store_true',
                             help='Normally all material created to run each'
@@ -477,6 +477,12 @@ def main() -> int:
                                  ' to run this once you have finished testing.'
                                  ' Using this negates the effect of any other'
                                  ' option.')
+
+    arg_parser.add_argument('-a', '--allow-no-tests', action='store_true',
+                            help='Normally jote expects to run tests'
+                                 ' and if you have no tests jote will fail.'
+                                 ' To prevent jote complaining about the lack'
+                                 ' of tests you can use this option.')
 
     args: argparse.Namespace = arg_parser.parse_args()
 
@@ -564,7 +570,7 @@ def main() -> int:
                          f' ignored={total_ignore_count}'
                          f' failed={total_fail_count}'
                          f' {dry_run}')
-    elif total_pass_count == 0:
+    elif total_pass_count == 0 and not args.allow_no_tests:
         arg_parser.error('Done (FAILURE)'
                          f' passed={total_pass_count}'
                          f' ignored={total_ignore_count}'
