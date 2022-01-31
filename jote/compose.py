@@ -7,7 +7,7 @@ executes docker-compose and can remove the test directory.
 import os
 import shutil
 import subprocess
-from typing import Dict, Optional, Tuple
+from typing import Any, Dict, Optional, Tuple
 
 _INSTANCE_DIRECTORY: str = '.instance-88888888-8888-8888-8888-888888888888'
 
@@ -114,7 +114,7 @@ class Compose:
             os.makedirs(inst_path)
 
         # Write the Docker compose content to a file to the test directory
-        variables: Dict[str, str] = {'test_path': project_path,
+        variables: Dict[str, Any] = {'test_path': project_path,
                                      'image': self._image,
                                      'uid': os.geteuid(),
                                      'gid': os.getegid(),
