@@ -16,6 +16,7 @@ version: '3.8'
 services:
   job:
     image: {image}
+    user: '{uid}:{gid}'
     command: {command}
     working_dir: {working_directory}
     environment:
@@ -115,6 +116,8 @@ class Compose:
         # Write the Docker compose content to a file to the test directory
         variables: Dict[str, str] = {'test_path': project_path,
                                      'image': self._image,
+                                     'uid': os.geteuid(),
+                                     'gid': os.getegid(),
                                      'command': self._command,
                                      'project_directory': self._project_directory,
                                      'working_directory': self._working_directory,
