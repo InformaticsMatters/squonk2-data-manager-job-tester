@@ -146,11 +146,8 @@ def _load(skip_lint: bool = False) -> Tuple[List[DefaultMunch], int]:
     return job_definitions, num_tests
 
 
-def _copy_inputs(test_inputs: DefaultMunch,
-                 project_path: str) -> bool:
+def _copy_inputs(test_inputs: List[str], project_path: str) -> bool:
     """Copies all the test files into the test project directory.
-    Files are expected to reside in the repo's 'data' directory
-    and must begin 'data/'
     """
 
     # The files are assumed to reside in the repo's 'data' directory.
@@ -159,20 +156,19 @@ def _copy_inputs(test_inputs: DefaultMunch,
     expected_prefix: str = f'{_DATA_DIRECTORY}/'
     for test_input in test_inputs:
 
-        test_file: str = test_inputs[test_input]
-        print(f'# + {test_file} ({test_input})')
+        print(f'# + {test_input}')
 
-        if not test_file.startswith(expected_prefix):
+        if not test_input.startswith(expected_prefix):
             print('! FAILURE')
-            print(f'! Input file {test_file} must start with "{expected_prefix}"')
+            print(f'! Input file {test_input} must start with "{expected_prefix}"')
             return False
-        if not os.path.isfile(test_file):
+        if not os.path.isfile(test_input):
             print('! FAILURE')
-            print(f'! Missing input file {test_file} ({test_input})')
+            print(f'! Missing input file {test_input} ({test_input})')
             return False
 
         # Looks OK, copy it
-        shutil.copy(test_file, project_path)
+        shutil.copy(test_input, project_path)
 
     print('# Copied')
 
@@ -288,6 +284,10 @@ def _test(args: argparse.Namespace,
 
         _print_test_banner(collection, job, job_test_name)
 
+        # The status changes to False if any
+        # part of this block fails.
+        test_status: bool = True
+
         # Does the test have an 'ignore' declaration?
         if 'ignore' in job_definition.tests[job_test_name]:
             print('W Ignoring test (found "ignore")')
@@ -295,43 +295,98 @@ def _test(args: argparse.Namespace,
             continue
 
         # Render the command for this test.
+
         # First extract the variables and values from 'options'
-        # and then 'inputs'...
+        # and then 'inputs'.
         job_variables: Dict[str, Any] = {}
         for variable in job_definition.tests[job_test_name].options:
             job_variables[variable] =\
                 job_definition.tests[job_test_name].options[variable]
+
+        # If the option variable's declaration is 'multiple'
+        # it must be handled as a list, e.g. it might be declared like this: -
+        #
+        # The double-comment is used
+        # to avoid mypy getting upset by the 'type' line...
+        #
+        # #  properties:
+        # #    fragments:
+        # #      title: Fragment molecules
+        # #      multiple: true
+        # #      mime-types:
+        # #      - chemical/x-mdl-molfile
+        # #      type: file
+        #
         # We only pass the basename of the input to the command decoding
         # i.e. strip the source directory.
+
+        # A list of input files (relative to this directory)
+        # We populate this with everything we find declared as an input
+        input_files: List[str] = []
+
+        # Process every 'input'
         for variable in job_definition.tests[job_test_name].inputs:
-            job_variables[variable] =\
-                os.path.basename(job_definition.tests[job_test_name]
-                                 .inputs[variable])
+            # Test variable must be known as an input or option.
+            # Is the variable an option (otherwise it's an input)
+            variable_is_option: bool = False
+            variable_is_input: bool = False
+            if variable in job_definition.variables.options.properties:
+                variable_is_option = True
+            elif variable in job_definition.variables.inputs.properties:
+                variable_is_input = True
+            if not variable_is_option and not variable_is_input:
+                print('! FAILURE')
+                print(f'! Test variable ({variable})' +
+                      ' not declared as input or option')
+                # Record but do no further processing
+                tests_failed += 1
+                test_status = False
+            # Is it declared as a list?
+            value_is_list: bool = False
+            if variable_is_option:
+                if job_definition.variables.options.properties[variable].multiple:
+                    value_is_list = True
+            else:
+                if job_definition.variables.inputs.properties[variable].multiple:
+                    value_is_list = True
 
-        # Get the raw (encoded) command from the job definition...
-        raw_command: str = job_definition.command
-        # Decode it using our variables...
-        decoded_command, test_status =\
-            decoder.decode(raw_command,
-                           job_variables,
-                           'command',
-                           decoder.TextEncoding.JINJA2_3_0)
-        if not test_status:
-            print('! FAILURE')
-            print('! Failed to render command')
-            print(f'! error={decoded_command}')
-            # Record but do no further processing
-            tests_failed += 1
-            test_status = False
+            # Add each value or just one value
+            # (depending on whether it's a list)
+            if value_is_list:
+                job_variables[variable] = []
+                for value in job_definition.tests[job_test_name].inputs[variable]:
+                    job_variables[variable].append(os.path.basename(value))
+                    input_files.append(value)
+            else:
+                value = job_definition.tests[job_test_name].inputs[variable]
+                job_variables[variable] = os.path.basename(value)
+                input_files.append(value)
 
-        # The command must not contain new-lines.
-        # So split then join the command.
-        job_command: str = ''.join(decoded_command.splitlines())
+        if test_status:
+            # Get the raw (encoded) command from the job definition...
+            raw_command: str = job_definition.command
+            # Decode it using our variables...
+            decoded_command, test_status =\
+                decoder.decode(raw_command,
+                               job_variables,
+                               'command',
+                               decoder.TextEncoding.JINJA2_3_0)
+            if not test_status:
+                print('! FAILURE')
+                print('! Failed to render command')
+                print(f'! error={decoded_command}')
+                # Record but do no further processing
+                tests_failed += 1
+                test_status = False
 
         # Create the test directories, docker-compose file
         # and copy inputs...
         t_compose: Optional[Compose] = None
         if test_status:
+
+            # The command must not contain new-lines.
+            # So split then join the command.
+            job_command: str = ''.join(decoded_command.splitlines())
 
             print(f'> image={job_image}')
             print(f'> command="{job_command}"')
@@ -351,10 +406,8 @@ def _test(args: argparse.Namespace,
 
             # Copy the data into the test's project directory.
             # Data's expected to be found in the Job's 'inputs'.
-            if job_definition.tests[job_test_name].inputs:
-                test_status =\
-                    _copy_inputs(job_definition.tests[job_test_name].inputs,
-                                 project_path)
+            print(f'input_files={input_files}')
+            test_status = _copy_inputs(input_files, project_path)
 
         # Run the container
         if test_status and not args.dry_run:
