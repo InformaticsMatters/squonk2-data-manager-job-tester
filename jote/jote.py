@@ -306,13 +306,16 @@ def _test(args: argparse.Namespace,
         # If the option variable's declaration is 'multiple'
         # it must be handled as a list, e.g. it might be declared like this: -
         #
-        #  properties:
-        #    fragments:
-        #      title: Fragment molecules
-        #      multiple: true
-        #      mime-types:
-        #      - chemical/x-mdl-molfile
-        #      type: file
+        # The double-comment is used
+        # to avoid mypy getting upset by the 'type' line...
+        #
+        # #  properties:
+        # #    fragments:
+        # #      title: Fragment molecules
+        # #      multiple: true
+        # #      mime-types:
+        # #      - chemical/x-mdl-molfile
+        # #      type: file
         #
         # We only pass the basename of the input to the command decoding
         # i.e. strip the source directory.
@@ -355,7 +358,7 @@ def _test(args: argparse.Namespace,
                     job_variables[variable].append(os.path.basename(value))
                     input_files.append(value)
             else:
-                value: str = job_definition.tests[job_test_name].inputs[variable]
+                value = job_definition.tests[job_test_name].inputs[variable]
                 job_variables[variable] = os.path.basename(value)
                 input_files.append(value)
 
