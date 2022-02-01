@@ -8,4 +8,5 @@ disable = import-error,
           too-many-arguments,
           too-many-locals,
           too-many-branches,
+          too-many-instance-attributes,
           too-many-statements
