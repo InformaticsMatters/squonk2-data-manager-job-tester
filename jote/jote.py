@@ -15,7 +15,7 @@ from yamllint.config import YamlLintConfig
 
 from decoder import decoder
 
-from .compose import get_test_root
+from .compose import get_test_root, INSTANCE_DIRECTORY
 from .compose import Compose
 
 # Where can we expect to find Job definitions?
@@ -369,6 +369,11 @@ def _test(args: argparse.Namespace,
                 input_files.append(value)
 
         if test_status:
+
+            # Job variables must contain 'built-in' variables: -
+            # - DM_INSTANCE_DIRECTORY
+            job_variables['DM_INSTANCE_DIRECTORY'] = INSTANCE_DIRECTORY
+
             # Get the raw (encoded) command from the job definition...
             raw_command: str = job_definition.command
             # Decode it using our variables...

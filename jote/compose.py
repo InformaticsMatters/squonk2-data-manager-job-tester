@@ -9,7 +9,7 @@ import shutil
 import subprocess
 from typing import Any, Dict, Optional, Tuple
 
-_INSTANCE_DIRECTORY: str = '.instance-88888888-8888-8888-8888-888888888888'
+INSTANCE_DIRECTORY: str = '.instance-88888888-8888-8888-8888-888888888888'
 
 _COMPOSE_CONTENT: str = """---
 version: '2.4'
@@ -118,7 +118,7 @@ class Compose:
         # Make the test directory...
         test_path = self.get_test_path()
         project_path: str = self.get_test_project_path()
-        inst_path: str = f'{project_path}/{_INSTANCE_DIRECTORY}'
+        inst_path: str = f'{project_path}/{INSTANCE_DIRECTORY}'
         if not os.path.exists(inst_path):
             os.makedirs(inst_path)
 
@@ -134,7 +134,7 @@ class Compose:
              'command': self._command,
              'project_directory': self._project_directory,
              'working_directory': self._working_directory,
-             'instance_directory': _INSTANCE_DIRECTORY}
+             'instance_directory': INSTANCE_DIRECTORY}
         compose_content: str = _COMPOSE_CONTENT.format(**variables)
         compose_path: str = f'{test_path}/docker-compose.yml'
         with open(compose_path, 'wt', encoding='UTF-8') as compose_file:
