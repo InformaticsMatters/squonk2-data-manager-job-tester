@@ -271,6 +271,12 @@ def _test(args: argparse.Namespace,
     tests_failed: int = 0
 
     job_image: str = f'{job_definition.image.name}:{job_definition.image.tag}'
+    job_image_memory: str = job_definition.image['memory']
+    if job_image_memory is None:
+        job_image_memory = '1Gi'
+    job_image_cores: int = job_definition.image['cores']
+    if job_image_cores is None:
+        job_image_cores = 1
     job_project_directory: str = job_definition.image['project-directory']
     job_working_directory: str = job_definition.image['working-directory']
 
@@ -396,6 +402,8 @@ def _test(args: argparse.Namespace,
                                 job,
                                 job_test_name,
                                 job_image,
+                                job_image_memory,
+                                job_image_cores,
                                 job_project_directory,
                                 job_working_directory,
                                 job_command)
@@ -413,7 +421,7 @@ def _test(args: argparse.Namespace,
         if test_status and not args.dry_run:
             # Run the container
             assert t_compose
-            exit_code, out, _ = t_compose.run()
+            exit_code, out, err = t_compose.run()
 
             # Delete the test directory?
             # Not if there's an error
@@ -425,8 +433,10 @@ def _test(args: argparse.Namespace,
                 print('! FAILURE')
                 print(f'! exit_code={exit_code}'
                       f' expected_exit_code={expected_exit_code}')
-                print('! Container output follows...')
+                print('! Container stdout follows...')
                 print(out)
+                print('! Container stderr follows...')
+                print(err)
                 test_status = False
 
             if args.verbose:

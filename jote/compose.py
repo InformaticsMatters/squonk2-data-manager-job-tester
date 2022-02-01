@@ -12,22 +12,20 @@ from typing import Any, Dict, Optional, Tuple
 _INSTANCE_DIRECTORY: str = '.instance-88888888-8888-8888-8888-888888888888'
 
 _COMPOSE_CONTENT: str = """---
-version: '3.8'
+version: '2.4'
 services:
   job:
     image: {image}
-    user: '{uid}:{gid}'
+    container_name: {job}-{test}-jote
+    user: '{uid}'
     command: {command}
     working_dir: {working_directory}
     environment:
     - DM_INSTANCE_DIRECTORY={instance_directory}
     volumes:
     - {test_path}:{project_directory}
-    deploy:
-      resources:
-        limits:
-          cpus: 1
-          memory: 1G
+    mem_limit: {memory_limit}
+    cpus: {cpus}.0
 """
 
 # A default, 30 minute timeout
@@ -64,17 +62,28 @@ class Compose:
                  job: str,
                  test: str,
                  image: str,
+                 memory: str,
+                 cores: int,
                  project_directory: str,
                  working_directory: str,
                  command: str):
 
-        self._collection = collection
-        self._job = job
-        self._test = test
-        self._image = image
-        self._project_directory = project_directory
-        self._working_directory = working_directory
-        self._command = command
+        # Memory must have a Mi or Gi suffix.
+        # For docker-compose we translate to 'm' and 'g'
+        if memory.endswith('Mi'):
+            self._memory: str = f'{memory[:-2]}m'
+        elif memory.endswith('Gi'):
+            self._memory: str = f'{memory[:-2]}g'
+        assert self._memory
+
+        self._collection: str = collection
+        self._job: str = job
+        self._test: str = test
+        self._image: str = image
+        self._cores: int = cores
+        self._project_directory: str = project_directory
+        self._working_directory: str = working_directory
+        self._command: str = command
 
     def get_test_path(self) -> str:
         """Returns the path to the root directory for a given test.
@@ -113,15 +122,19 @@ class Compose:
         if not os.path.exists(inst_path):
             os.makedirs(inst_path)
 
-        # Write the Docker compose content to a file to the test directory
-        variables: Dict[str, Any] = {'test_path': project_path,
-                                     'image': self._image,
-                                     'uid': os.geteuid(),
-                                     'gid': os.getegid(),
-                                     'command': self._command,
-                                     'project_directory': self._project_directory,
-                                     'working_directory': self._working_directory,
-                                     'instance_directory': _INSTANCE_DIRECTORY}
+        # Write the Docker compose content to a file in the test directory
+        variables: Dict[str, Any] =\
+            {'test_path': project_path,
+             'job': self._job,
+             'test': self._test,
+             'image': self._image,
+             'memory_limit': self._memory,
+             'cpus': self._cores,
+             'uid': os.geteuid(),
+             'command': self._command,
+             'project_directory': self._project_directory,
+             'working_directory': self._working_directory,
+             'instance_directory': _INSTANCE_DIRECTORY}
         compose_content: str = _COMPOSE_CONTENT.format(**variables)
         compose_path: str = f'{test_path}/docker-compose.yml'
         with open(compose_path, 'wt', encoding='UTF-8') as compose_file:
