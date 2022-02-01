@@ -73,7 +73,7 @@ class Compose:
         if memory.endswith('Mi'):
             self._memory: str = f'{memory[:-2]}m'
         elif memory.endswith('Gi'):
-            self._memory: str = f'{memory[:-2]}g'
+            self._memory = f'{memory[:-2]}g'
         assert self._memory
 
         self._collection: str = collection
