@@ -3,7 +3,6 @@
 Run with 'jote --help'
 """
 import argparse
-import glob
 import os
 import shutil
 from typing import Any, Dict, List, Optional, Tuple
@@ -20,6 +19,8 @@ from .compose import Compose
 
 # Where can we expect to find Job definitions?
 _DEFINITION_DIRECTORY: str = 'data-manager'
+# What's the default manifest file?
+_DEFAULT_MANIFEST: str = 'manifest.yaml'
 # Where can we expect to find test data?
 _DATA_DIRECTORY: str = 'data'
 
@@ -85,6 +86,27 @@ def _validate_schema(definition_filename: str) -> bool:
     return True
 
 
+def _validate_manifest_schema(manifest_filename: str) -> bool:
+    """Checks the Manifest against the decoder's schema.
+    """
+
+    with open(manifest_filename, 'rt', encoding='UTF-8') as definition_file:
+        job_def: Optional[Dict[str, Any]] =\
+            yaml.load(definition_file, Loader=yaml.FullLoader)
+    assert job_def
+
+    # If the decoder returns something there's been an error.
+    error: Optional[str] = decoder.validate_manifest_schema(job_def)
+    if error:
+        print(f'! Manifest "{manifest_filename}"'
+              ' does not comply with schema')
+        print('! Full response follows:')
+        print(error)
+        return False
+
+    return True
+
+
 def _check_cwd() -> bool:
     """Checks the execution directory for sanity (cwd). Here we must find
     a .yamllint file and a data-manager directory?
@@ -107,8 +129,9 @@ def _check_cwd() -> bool:
     return True
 
 
-def _load(skip_lint: bool = False) -> Tuple[List[DefaultMunch], int]:
-    """Loads definition files (all the YAML files in a given directory)
+def _load(manifest_filename: str, skip_lint: bool)\
+        -> Tuple[List[DefaultMunch], int]:
+    """Loads definition files listed in the manifest
     and extracts the definitions that contain at least one test. The
     definition blocks for those that have tests (ignored or otherwise)
     are returned along with a count of the number of tests found
@@ -117,23 +140,37 @@ def _load(skip_lint: bool = False) -> Tuple[List[DefaultMunch], int]:
     If there was a problem loading the files an empty list and
     -ve count is returned.
     """
+    manifest_path: str = os.path.join(_DEFINITION_DIRECTORY, manifest_filename)
+    if not os.path.isfile(manifest_path):
+        print(f'! The manifest file is missing ("{manifest_path}")')
+        return [], -1
+
+    if not _validate_manifest_schema(manifest_path):
+        return [], -1
+
+    with open(manifest_path, 'r', encoding='UTF-8') as manifest_file:
+        manifest: Dict[str, Any] = yaml.load(manifest_file, Loader=yaml.FullLoader)
+    if manifest:
+        manifest_munch: DefaultMunch = DefaultMunch.fromDict(manifest)
+
+    # Iterate through the named files...
     job_definitions: List[DefaultMunch] = []
     num_tests: int = 0
 
-    jd_filenames: List[str] = glob.glob(f'{_DEFINITION_DIRECTORY}/*.yaml')
-    for jd_filename in jd_filenames:
+    for jd_filename in manifest_munch['job-definition-files']:
 
-        # Does the definition comply with the dschema,
-        # no options here - it must.
-        if not _validate_schema(jd_filename):
+        # Does the definition comply with the dschema?
+        # No options here - it must.
+        jd_path: str = os.path.join(_DEFINITION_DIRECTORY, jd_filename)
+        if not _validate_schema(jd_path):
             return [], -1
 
         # YAML-lint the definition?
         if not skip_lint:
-            if not _lint(jd_filename):
+            if not _lint(jd_path):
                 return [], -2
 
-        with open(jd_filename, 'r', encoding='UTF-8') as jd_file:
+        with open(jd_path, 'r', encoding='UTF-8') as jd_file:
             job_def: Dict[str, Any] = yaml.load(jd_file, Loader=yaml.FullLoader)
         if job_def:
             jd_munch: DefaultMunch = DefaultMunch.fromDict(job_def)
@@ -494,9 +531,14 @@ def main() -> int:
 
     # Build a command-line parser
     # and process the command-line...
-    arg_parser: argparse.ArgumentParser =\
-        argparse.ArgumentParser(description='Data Manager Job Tester')
+    arg_parser: argparse.ArgumentParser = argparse\
+        .ArgumentParser(description='Data Manager Job Tester',
+                        formatter_class=argparse.ArgumentDefaultsHelpFormatter)
 
+    arg_parser.add_argument('-m', '--manifest',
+                            help='The manifest file.',
+                            default=_DEFAULT_MANIFEST,
+                            type=str)
     arg_parser.add_argument('-c', '--collection',
                             help='The Job collection to test. If not'
                                  ' specified the Jobs in all collections'
@@ -580,8 +622,10 @@ def main() -> int:
         print('Done [Wiped]')
         return 0
 
+    print(f'# Using manifest "{args.manifest}"')
+
     # Load all the files we can and then run the tests.
-    job_definitions, num_tests = _load(args.skip_lint)
+    job_definitions, num_tests = _load(args.manifest, args.skip_lint)
     if num_tests < 0:
         print('! FAILURE')
         print('! Definition file has failed yamllint')
