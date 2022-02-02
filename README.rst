@@ -9,9 +9,10 @@ The Job Tester (``jote``) is used to run unit tests located in
 Data Manager Job implementation repositories against the Job's
 container image.
 
-Job implementations are required to provide a Job Definition (in the
-Job repository's ``data-manager`` directory). The Job Definition should define
-at least one test for every Job in the file. ``jote`` runs the tests
+Job implementations are required to provide a Manifest file (``manifest.yaml``)
+that lists Job Definition files (in the Job repository's ``data-manager``
+directory). The Manifest names at least ine file and the Job Definition
+should define at least one test for every Job. ``jote`` runs the tests
 but also ensures the repository structure meets the Data Manager requirements.
 
 Tests are defined in the Job definition file. Here's a snippet illustrating a
