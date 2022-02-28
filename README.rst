@@ -42,6 +42,18 @@ it must *exist* and contain ``100`` lines::
                 checks:
                 - exists: true
                 - lineCount: 100
+Individual tests can be prevented from being processed by adding an `ignore`
+declaration::
+
+    jobs:
+      [...]
+      max-min-picker:
+        [...]
+        tests:
+          simple-execution:
+            ignore:
+            [...]
+
 
 Installation
 ------------
