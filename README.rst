@@ -42,7 +42,7 @@ it must *exist* and contain ``100`` lines::
                 checks:
                 - exists: true
                 - lineCount: 100
-Individual tests can be prevented from being processed by adding an `ignore`
+Individual tests can be prevented from being executed by adding an `ignore`
 declaration::
 
     jobs:
@@ -54,6 +54,23 @@ declaration::
             ignore:
             [...]
 
+Tests can be assigned a ``run-level``. Run-levels are numerical value (1..100)
+that can be used to classify your tests, often using it to represent
+execution time. By default all tests that have no run-level and those with
+run-level ``1`` are executed. You can set the run-level for longer-running
+tests higher value, e.g. ``10``. To run these more time-consuming tests you
+specify the new run-level when running jote: ``jote --run-level 10``.
+
+You define the run-level in the root block of the job specification::
+
+    jobs:
+      [...]
+      max-min-picker:
+        [...]
+        tests:
+          simple-execution:
+            run-level: 5
+            [...]
 
 Installation
 ------------

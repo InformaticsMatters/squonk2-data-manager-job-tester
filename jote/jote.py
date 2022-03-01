@@ -291,19 +291,16 @@ def _check(t_compose: Compose,
 def _test(args: argparse.Namespace,
           collection: str,
           job: str,
-          job_definition: DefaultMunch) -> Tuple[int, int, int]:
-    """Runs the tests for a specific Job definition returning True on success.
-    If an individual test is marked as 'ignored' it will not be processed,
-    and will not be counted.
-
-    The function returns a tuple containing the count of the number of tests
-    that passed, were ignored and those that failed.
+          job_definition: DefaultMunch) -> Tuple[int, int, int, int]:
+    """Runs the tests for a specific Job definition returning the number
+    of tests passed, skipped (due to run-level), ignored and failed.
     """
     assert job_definition
     assert isinstance(job_definition, DefaultMunch)
 
     # The test status, assume success
     tests_passed: int = 0
+    tests_skipped: int = 0
     tests_ignored: int = 0
     tests_failed: int = 0
 
@@ -336,6 +333,15 @@ def _test(args: argparse.Namespace,
             print('W Ignoring test (found "ignore")')
             tests_ignored += 1
             continue
+
+        # Does the test have a 'run-level' declaration?
+        # If so, is it higher than the run-level specified?
+        if 'run-level' in job_definition.tests[job_test_name]:
+            run_level: int = job_definition.tests[job_test_name]['run-level']
+            if run_level > args.run_level:
+                print(f'W Skipping test (test is "run-level: {run_level}")')
+                tests_skipped += 1
+                continue
 
         # Render the command for this test.
 
@@ -510,7 +516,7 @@ def _test(args: argparse.Namespace,
         if not test_status and args.exit_on_failure:
             break
 
-    return tests_passed, tests_ignored, tests_failed
+    return tests_passed, tests_skipped, tests_ignored, tests_failed
 
 
 def _wipe() -> None:
@@ -519,6 +525,17 @@ def _wipe() -> None:
     test_root: str = get_test_root()
     if os.path.isdir(test_root):
         shutil.rmtree(test_root)
+
+
+def arg_check_run_level(value: str) -> int:
+    """A type checker for the argparse run-level.
+    """
+    i_value = int(value)
+    if i_value < 1:
+        raise argparse.ArgumentTypeError('Minimum value is 1')
+    if i_value > 100:
+        raise argparse.ArgumentTypeError('Maximum value is 100')
+    return i_value
 
 
 # -----------------------------------------------------------------------------
@@ -553,6 +570,12 @@ def main() -> int:
                                  ' is required. If not specified all the Tests'
                                  ' that match the collection will be'
                                  ' candidates for testing.')
+    arg_parser.add_argument('-r', '--run-level',
+                            help='The run-level of the tests you want to'
+                                 ' execute. All tests at or below this level'
+                                 ' will be executed, a value from 1 to 100',
+                            default=1,
+                            type=arg_check_run_level)
 
     arg_parser.add_argument('-d', '--dry-run', action='store_true',
                             help='Setting this flag will result in jote'
@@ -606,8 +629,9 @@ def main() -> int:
         arg_parser.error('Cannot use --wipe and --keep-results')
 
     # Args are OK if we get here.
-    total_fail_count: int = 0
+    total_skipped_count: int = 0
     total_ignore_count: int = 0
+    total_fail_count: int = 0
 
     # Check CWD
     if not _check_cwd():
@@ -657,11 +681,12 @@ def main() -> int:
                     continue
 
                 if job_definition.jobs[job_name].tests:
-                    _, num_ignored, num_failed =\
+                    _, num_skipped, num_ignored, num_failed =\
                         _test(args,
                               collection,
                               job_name,
                               job_definition.jobs[job_name])
+                    total_skipped_count += num_skipped
                     total_ignore_count += num_ignored
                     total_fail_count += num_failed
 
@@ -678,22 +703,18 @@ def main() -> int:
     print('  ---')
     total_pass_count: int = num_tests - total_fail_count - total_ignore_count
     dry_run: str = '[DRY RUN]' if args.dry_run else ''
+    summary: str = f'passed={total_pass_count}' \
+        f' skipped={total_skipped_count}' \
+        f' ignored={total_ignore_count}'
     if total_fail_count:
-        arg_parser.error('Done (FAILURE)'
-                         f' passed={total_pass_count}'
-                         f' ignored={total_ignore_count}'
-                         f' failed={total_fail_count}'
+        arg_parser.error(f'Done (FAILURE) {summary} failed={total_fail_count}'
                          f' {dry_run}')
     elif total_pass_count == 0 and not args.allow_no_tests:
-        arg_parser.error('Done (FAILURE)'
-                         f' passed={total_pass_count}'
-                         f' ignored={total_ignore_count}'
-                         f' failed=0'
-                         f' (at least one test must pass) {dry_run}')
+        arg_parser.error(f'Done (FAILURE) {summary}'
+                         f' failed=0 (at least one test must pass)'
+                         f' {dry_run}')
     else:
-        print(f'Done (OK)'
-              f' passed={total_pass_count}'
-              f' ignored={total_ignore_count} {dry_run}')
+        print(f'Done (OK) {summary} {dry_run}')
 
     # Automatically wipe.
     # If there have been no failures
