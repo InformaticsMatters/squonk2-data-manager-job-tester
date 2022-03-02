@@ -140,7 +140,10 @@ def _load(manifest_filename: str, skip_lint: bool)\
     If there was a problem loading the files an empty list and
     -ve count is returned.
     """
-    manifest_path: str = os.path.join(_DEFINITION_DIRECTORY, manifest_filename)
+    # Prefix manifest filename with definition directory if required...
+    manifest_path: str = manifest_filename\
+        if manifest_filename.startswith(f'{_DEFINITION_DIRECTORY}/')\
+        else os.path.join(_DEFINITION_DIRECTORY, manifest_filename)
     if not os.path.isfile(manifest_path):
         print(f'! The manifest file is missing ("{manifest_path}")')
         return [], -1
@@ -337,11 +340,14 @@ def _test(args: argparse.Namespace,
         # Does the test have a 'run-level' declaration?
         # If so, is it higher than the run-level specified?
         if 'run-level' in job_definition.tests[job_test_name]:
-            run_level: int = job_definition.tests[job_test_name]['run-level']
+            run_level = job_definition.tests[job_test_name]['run-level']
+            print(f'> run-level={run_level}')
             if run_level > args.run_level:
                 print(f'W Skipping test (test is "run-level: {run_level}")')
                 tests_skipped += 1
                 continue
+        else:
+            print('> run-level=Undefined')
 
         # Render the command for this test.
 
