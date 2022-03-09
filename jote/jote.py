@@ -635,9 +635,10 @@ def main() -> int:
         arg_parser.error('Cannot use --wipe and --keep-results')
 
     # Args are OK if we get here.
+    total_passed_count: int = 0
     total_skipped_count: int = 0
     total_ignore_count: int = 0
-    total_fail_count: int = 0
+    total_failed_count: int = 0
 
     # Check CWD
     if not _check_cwd():
@@ -664,11 +665,11 @@ def main() -> int:
     msg: str = 'test' if num_tests == 1 else 'tests'
     print(f'# Found {num_tests} {msg}')
     if args.collection:
-        print(f'# Limiting to Collection {args.collection}')
+        print(f'# Limiting to Collection "{args.collection}"')
     if args.job:
-        print(f'# Limiting to Job {args.job}')
+        print(f'# Limiting to Job "{args.job}"')
     if args.test:
-        print(f'# Limiting to Test {args.test}')
+        print(f'# Limiting to Test "{args.test}"')
 
     if job_definitions:
         # There is at least one job-definition with a test
@@ -687,14 +688,15 @@ def main() -> int:
                     continue
 
                 if job_definition.jobs[job_name].tests:
-                    _, num_skipped, num_ignored, num_failed =\
+                    num_passed, num_skipped, num_ignored, num_failed =\
                         _test(args,
                               collection,
                               job_name,
                               job_definition.jobs[job_name])
+                    total_passed_count += num_passed
                     total_skipped_count += num_skipped
                     total_ignore_count += num_ignored
-                    total_fail_count += num_failed
+                    total_failed_count += num_failed
 
                     # Break out of this loop if told to stop on failures
                     if num_failed > 0 and args.exit_on_failure:
@@ -707,17 +709,16 @@ def main() -> int:
     # Success or failure?
     # It's an error to find no tests.
     print('  ---')
-    total_pass_count: int = num_tests - total_fail_count - total_ignore_count
     dry_run: str = '[DRY RUN]' if args.dry_run else ''
-    summary: str = f'passed={total_pass_count}' \
+    summary: str = f'passed={total_passed_count}' \
         f' skipped={total_skipped_count}' \
-        f' ignored={total_ignore_count}'
-    if total_fail_count:
-        arg_parser.error(f'Done (FAILURE) {summary} failed={total_fail_count}'
-                         f' {dry_run}')
-    elif total_pass_count == 0 and not args.allow_no_tests:
+        f' ignored={total_ignore_count}' \
+        f' failed={total_failed_count}'
+    if total_failed_count:
+        arg_parser.error(f'Done (FAILURE) {summary} {dry_run}')
+    elif total_passed_count == 0 and not args.allow_no_tests:
         arg_parser.error(f'Done (FAILURE) {summary}'
-                         f' failed=0 (at least one test must pass)'
+                         f' (at least one test must pass)'
                          f' {dry_run}')
     else:
         print(f'Done (OK) {summary} {dry_run}')
@@ -725,7 +726,7 @@ def main() -> int:
     # Automatically wipe.
     # If there have been no failures
     # and not told to keep directories.
-    if total_fail_count == 0 and not args.keep_results:
+    if total_failed_count == 0 and not args.keep_results:
         _wipe()
 
     return 0
