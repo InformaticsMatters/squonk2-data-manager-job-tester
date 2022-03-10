@@ -23,6 +23,7 @@ services:
     environment:
     - DM_INSTANCE_DIRECTORY={instance_directory}
     volumes:
+    - /var/run/docker.sock:/var/run/docker.sock
     - {test_path}:{project_directory}
     mem_limit: {memory_limit}
     cpus: {cpus}.0
@@ -30,6 +31,9 @@ services:
 
 # A default, 30 minute timeout
 _DEFAULT_TEST_TIMEOUT: int = 30 * 60
+
+# The user id containers will be started as
+_USER_ID: int = 8888
 
 
 def _get_docker_compose_version() -> str:
@@ -130,7 +134,7 @@ class Compose:
              'image': self._image,
              'memory_limit': self._memory,
              'cpus': self._cores,
-             'uid': os.geteuid(),
+             'uid': _USER_ID,
              'command': self._command,
              'project_directory': self._project_directory,
              'working_directory': self._working_directory,
