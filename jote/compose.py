@@ -89,7 +89,7 @@ class Compose:
         self._project_directory: str = project_directory
         self._working_directory: str = working_directory
         self._command: str = command
-        self._user_id: int = user_id
+        self._user_id: Optional[int] = user_id
 
     def get_test_path(self) -> str:
         """Returns the path to the root directory for a given test.
