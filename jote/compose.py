@@ -70,7 +70,8 @@ class Compose:
                  cores: int,
                  project_directory: str,
                  working_directory: str,
-                 command: str):
+                 command: str,
+                 user_id: Optional[int] = None):
 
         # Memory must have a Mi or Gi suffix.
         # For docker-compose we translate to 'm' and 'g'
@@ -88,6 +89,7 @@ class Compose:
         self._project_directory: str = project_directory
         self._working_directory: str = working_directory
         self._command: str = command
+        self._user_id: int = user_id
 
     def get_test_path(self) -> str:
         """Returns the path to the root directory for a given test.
@@ -126,6 +128,12 @@ class Compose:
         if not os.path.exists(inst_path):
             os.makedirs(inst_path)
 
+        # Run as a specific user ID?
+        if self._user_id is not None:
+            user_id = self._user_id
+        else:
+            user_id = os.getuid()
+
         # Write the Docker compose content to a file in the test directory
         variables: Dict[str, Any] =\
             {'test_path': project_path,
@@ -134,7 +142,7 @@ class Compose:
              'image': self._image,
              'memory_limit': self._memory,
              'cpus': self._cores,
-             'uid': _USER_ID,
+             'uid': user_id,
              'command': self._command,
              'project_directory': self._project_directory,
              'working_directory': self._working_directory,

@@ -332,22 +332,30 @@ def _test(args: argparse.Namespace,
         test_status: bool = True
 
         # Does the test have an 'ignore' declaration?
+        # Obey it unless the test is named explicitly -
+        # i.e. if th user has named a specific test, run it.
         if 'ignore' in job_definition.tests[job_test_name]:
-            print('W Ignoring test (found "ignore")')
-            tests_ignored += 1
-            continue
+            if args.test:
+                print('W Ignoring the ignore: property (told to run this test)')
+            else:
+                print('W Ignoring test (found "ignore")')
+                tests_ignored += 1
+                continue
 
         # Does the test have a 'run-level' declaration?
         # If so, is it higher than the run-level specified?
-        if 'run-level' in job_definition.tests[job_test_name]:
-            run_level = job_definition.tests[job_test_name]['run-level']
-            print(f'> run-level={run_level}')
-            if run_level > args.run_level:
-                print(f'W Skipping test (test is "run-level: {run_level}")')
-                tests_skipped += 1
-                continue
+        if args.test:
+            print('W Ignoring any run-level check (told to run this test)')
         else:
-            print('> run-level=Undefined')
+            if 'run-level' in job_definition.tests[job_test_name]:
+                run_level = job_definition.tests[job_test_name]['run-level']
+                print(f'> run-level={run_level}')
+                if run_level > args.run_level:
+                    print(f'W Skipping test (test is "run-level: {run_level}")')
+                    tests_skipped += 1
+                    continue
+            else:
+                print('> run-level=Undefined')
 
         # Render the command for this test.
 
@@ -460,7 +468,8 @@ def _test(args: argparse.Namespace,
                                 job_image_cores,
                                 job_project_directory,
                                 job_working_directory,
-                                job_command)
+                                job_command,
+                                args.run_as_user)
             project_path: str = t_compose.create()
 
             test_path: str = t_compose.get_test_path()
@@ -544,6 +553,17 @@ def arg_check_run_level(value: str) -> int:
     return i_value
 
 
+def arg_check_run_as_user(value: str) -> int:
+    """A type checker for the argparse run-as-user.
+    """
+    i_value = int(value)
+    if i_value < 0:
+        raise argparse.ArgumentTypeError('Minimum value is 0')
+    if i_value > 65_535:
+        raise argparse.ArgumentTypeError('Maximum value is 65535')
+    return i_value
+
+
 # -----------------------------------------------------------------------------
 # main
 # -----------------------------------------------------------------------------
@@ -582,6 +602,11 @@ def main() -> int:
                                  ' will be executed, a value from 1 to 100',
                             default=1,
                             type=arg_check_run_level)
+    arg_parser.add_argument('-u', '--run-as-user',
+                            help='A user ID to run the tests as. If not set'
+                                 ' your user ID is used to run the test'
+                                 ' containers.',
+                            type=arg_check_run_as_user)
 
     arg_parser.add_argument('-d', '--dry-run', action='store_true',
                             help='Setting this flag will result in jote'
