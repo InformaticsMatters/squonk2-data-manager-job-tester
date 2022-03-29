@@ -5,6 +5,7 @@ get help running the utility with 'jote --help'
 import argparse
 import os
 import shutil
+import subprocess
 import sys
 from typing import Any, Dict, List, Optional, Tuple
 
@@ -15,7 +16,7 @@ from yamllint.config import YamlLintConfig
 
 from decoder import decoder
 
-from .compose import get_test_root, INSTANCE_DIRECTORY
+from .compose import get_test_root, INSTANCE_DIRECTORY, DEFAULT_TEST_TIMEOUT_S
 from .compose import Compose
 
 # Where can we expect to find Job definitions?
@@ -295,6 +296,30 @@ def _check(t_compose: Compose,
     return True
 
 
+def _run_nextflow(command: str, project_path: str)\
+        -> Tuple[int, str, str]:
+    """Runs nextflow in the project directory returning the exit code,
+    stdout and stderr.
+    """
+    assert command
+    assert project_path
+
+    cwd = os.getcwd()
+    os.chdir(project_path)
+
+    try:
+        test = subprocess.run(command.split(),
+                              capture_output=True,
+                              timeout=DEFAULT_TEST_TIMEOUT_S,
+                              check=False)
+    finally:
+        os.chdir(cwd)
+
+    return test.returncode,\
+        test.stdout.decode("utf-8"),\
+        test.stderr.decode("utf-8")
+
+
 def _test(args: argparse.Namespace,
           collection: str,
           job: str,
@@ -324,10 +349,6 @@ def _test(args: argparse.Namespace,
         job_image_type: str = job_definition.image['type'].lower()
     else:
         job_image_type = _DEFAULT_IMAGE_TYPE
-
-    # Exclude nextflow image types for now.
-    if job_image_type in [_IMAGE_TYPE_NEXTFLOW]:
-        return tests_passed, tests_skipped, tests_ignored, tests_failed
 
     for job_test_name in job_definition.tests:
 
@@ -437,6 +458,7 @@ def _test(args: argparse.Namespace,
                 job_variables[variable] = os.path.basename(value)
                 input_files.append(value)
 
+        decoded_command: str = ''
         if test_status:
 
             # Job variables must contain 'built-in' variables: -
@@ -462,11 +484,14 @@ def _test(args: argparse.Namespace,
         # Create the test directories, docker-compose file
         # and copy inputs...
         t_compose: Optional[Compose] = None
+        job_command: str = ''
+        project_path: str = ''
         if test_status:
 
             # The command must not contain new-lines.
             # So split then join the command.
-            job_command: str = ''.join(decoded_command.splitlines())
+            assert decoded_command
+            job_command = ''.join(decoded_command.splitlines())
 
             print(f'> image={job_image}')
             print(f'> image-type={job_image_type}')
@@ -483,7 +508,7 @@ def _test(args: argparse.Namespace,
                                 job_working_directory,
                                 job_command,
                                 args.run_as_user)
-            project_path: str = t_compose.create()
+            project_path = t_compose.create()
 
             test_path: str = t_compose.get_test_path()
             print(f'# path={test_path}')
@@ -496,37 +521,44 @@ def _test(args: argparse.Namespace,
         # Run the container
         if test_status and not args.dry_run:
 
+            exit_code: int = 0
+            out: str = ''
+            err: str = ''
             if job_image_type in [_IMAGE_TYPE_SIMPLE]:
                 # Run the image container
                 assert t_compose
                 exit_code, out, err = t_compose.run()
             elif job_image_type in [_IMAGE_TYPE_NEXTFLOW]:
                 # Run nextflow directly
-                pass
-
-            # Delete the test directory?
-            # Not if there's an error
-            # and not if told not to.
-            expected_exit_code: int =\
-                job_definition.tests[job_test_name].checks.exitCode
-
-            if exit_code != expected_exit_code:
+                assert job_command
+                assert project_path
+                exit_code, out, err = _run_nextflow(job_command, project_path)
+            else:
                 print('! FAILURE')
-                print(f'! exit_code={exit_code}'
-                      f' expected_exit_code={expected_exit_code}')
-                print('! Container stdout follows...')
-                print(out)
-                print('! Container stderr follows...')
-                print(err)
+                print(f'! unsupported image-type ({job_image_type}')
                 test_status = False
+
+            if test_status:
+                expected_exit_code: int =\
+                    job_definition.tests[job_test_name].checks.exitCode
+
+                if exit_code != expected_exit_code:
+                    print('! FAILURE')
+                    print(f'! exit_code={exit_code}'
+                          f' expected_exit_code={expected_exit_code}')
+                    print('! Test stdout follows...')
+                    print(out)
+                    print('! Test stderr follows...')
+                    print(err)
+                    test_status = False
 
             if args.verbose:
                 print(out)
 
         # Inspect the results
         # (only if successful so far)
-        if test_status \
-                and not args.dry_run \
+        if test_status\
+                and not args.dry_run\
                 and job_definition.tests[job_test_name].checks.outputs:
 
             assert t_compose

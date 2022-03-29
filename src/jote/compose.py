@@ -11,6 +11,12 @@ from typing import Any, Dict, Optional, Tuple
 
 INSTANCE_DIRECTORY: str = '.instance-88888888-8888-8888-8888-888888888888'
 
+# A default, 30 minute timeout
+DEFAULT_TEST_TIMEOUT_S: int = 30 * 60
+
+# The user id containers will be started as
+_USER_ID: int = 8888
+
 _COMPOSE_CONTENT: str = """---
 version: '2.4'
 services:
@@ -28,12 +34,6 @@ services:
     mem_limit: {memory_limit}
     cpus: {cpus}.0
 """
-
-# A default, 30 minute timeout
-_DEFAULT_TEST_TIMEOUT: int = 30 * 60
-
-# The user id containers will be started as
-_USER_ID: int = 8888
 
 
 def _get_docker_compose_version() -> str:
@@ -168,7 +168,7 @@ class Compose:
         cwd = os.getcwd()
         os.chdir(self.get_test_path())
 
-        timeout: int = _DEFAULT_TEST_TIMEOUT
+        timeout_s: int = DEFAULT_TEST_TIMEOUT_S
         try:
             # Run the container
             # and then cleanup
@@ -176,7 +176,7 @@ class Compose:
                                    '--exit-code-from', 'job',
                                    '--abort-on-container-exit'],
                                   capture_output=True,
-                                  timeout=timeout,
+                                  timeout=timeout_s,
                                   check=False)
             _ = subprocess.run(['docker-compose', 'down'],
                                capture_output=True,
