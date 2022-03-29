@@ -771,6 +771,7 @@ def main() -> int:
 # MAIN
 # -----------------------------------------------------------------------------
 if __name__ == '__main__':
-    ret_val = main()
-    if ret_val != 0:
-        sys.exit(ret_val)
+
+    _RET_VAL: int = main()
+    if _RET_VAL != 0:
+        sys.exit(_RET_VAL)
