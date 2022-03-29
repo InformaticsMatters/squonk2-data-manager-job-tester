@@ -1,6 +1,6 @@
 """Informatics Matters Job Tester (JOTE).
 
-Run with 'jote --help'
+get help running the utility with 'jote --help'
 """
 import argparse
 import os
@@ -24,9 +24,9 @@ _DEFAULT_MANIFEST: str = 'manifest.yaml'
 # Where can we expect to find test data?
 _DATA_DIRECTORY: str = 'data'
 
-# The yamllint configuration file of the repository under test.
-# It must exist in the root of the repo we're running in.
-_YAMLLINT_FILE: str = '.yamllint'
+# Our yamllint configuration file
+# from the same directory as us.
+_YAMLLINT_FILE: str = os.path.join(os.path.dirname(__file__), 'jote.yamllint')
 
 
 def _print_test_banner(collection: str,
@@ -109,15 +109,8 @@ def _validate_manifest_schema(manifest_filename: str) -> bool:
 
 def _check_cwd() -> bool:
     """Checks the execution directory for sanity (cwd). Here we must find
-    a .yamllint file and a data-manager directory?
+    a data-manager directory
     """
-    expected_files: List[str] = [_YAMLLINT_FILE]
-    for expected_file in expected_files:
-        if not os.path.isfile(expected_file):
-            print(f'! Expected file "{expected_file}"'
-                  ' but it is not here')
-            return False
-
     expected_directories: List[str] = [_DEFINITION_DIRECTORY,
                                        _DATA_DIRECTORY]
     for expected_directory in expected_directories:
