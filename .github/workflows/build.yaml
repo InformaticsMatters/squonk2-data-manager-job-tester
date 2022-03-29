@@ -17,7 +17,11 @@ name: build
 # Environment         (none)
 
 on:
-- push
+  push:
+    branches:
+    - '**'
+    tags-ignore:
+    - '**'
 
 jobs:
   build:
@@ -38,12 +42,11 @@ jobs:
         python -m pip install --upgrade pip
         pip install -r requirements.txt
         pip install -r build-requirements.txt
-        pip install -r package-requirements.txt
     - name: Test
       run: |
-        pylint jote
-        mypy jote --install-types --non-interactive
+        pylint src
+        mypy src --install-types --non-interactive
         pyroma .
     - name: Build
       run: |
-        python setup.py bdist_wheel
+        python -m build --sdist --wheel --outdir dist/

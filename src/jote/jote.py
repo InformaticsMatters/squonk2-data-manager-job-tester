@@ -5,6 +5,7 @@ get help running the utility with 'jote --help'
 import argparse
 import os
 import shutil
+import sys
 from typing import Any, Dict, List, Optional, Tuple
 
 from munch import DefaultMunch
@@ -27,6 +28,11 @@ _DATA_DIRECTORY: str = 'data'
 # Our yamllint configuration file
 # from the same directory as us.
 _YAMLLINT_FILE: str = os.path.join(os.path.dirname(__file__), 'jote.yamllint')
+
+# Read the version file
+_VERSION_FILE: str = os.path.join(os.path.dirname(__file__), 'VERSION')
+with open(_VERSION_FILE, 'r', encoding='utf-8') as file_handle:
+    _VERSION = file_handle.read().strip()
 
 
 def _print_test_banner(collection: str,
@@ -617,6 +623,9 @@ def main() -> int:
     arg_parser.add_argument('-v', '--verbose', action='store_true',
                             help='Displays test stdout')
 
+    arg_parser.add_argument('--version', action='store_true',
+                            help='Displays jote version')
+
     arg_parser.add_argument('-x', '--exit-on-failure', action='store_true',
                             help='Normally jote reports test failures but'
                                  ' continues with the next test.'
@@ -644,6 +653,11 @@ def main() -> int:
                                  ' of tests you can use this option.')
 
     args: argparse.Namespace = arg_parser.parse_args()
+
+    # If a version's been asked for act on it and then leave
+    if args.version:
+        print(_VERSION)
+        return 0
 
     if args.test and args.job is None:
         arg_parser.error('--test requires --job')
@@ -732,12 +746,15 @@ def main() -> int:
         f' skipped={total_skipped_count}' \
         f' ignored={total_ignore_count}' \
         f' failed={total_failed_count}'
+    failed: bool = False
     if total_failed_count:
         arg_parser.error(f'Done (FAILURE) {summary} {dry_run}')
+        failed = True
     elif total_passed_count == 0 and not args.allow_no_tests:
         arg_parser.error(f'Done (FAILURE) {summary}'
                          f' (at least one test must pass)'
                          f' {dry_run}')
+        failed = True
     else:
         print(f'Done (OK) {summary} {dry_run}')
 
@@ -747,11 +764,13 @@ def main() -> int:
     if total_failed_count == 0 and not args.keep_results:
         _wipe()
 
-    return 0
+    return 1 if failed else 0
 
 
 # -----------------------------------------------------------------------------
 # MAIN
 # -----------------------------------------------------------------------------
 if __name__ == '__main__':
-    main()
+    ret_val = main()
+    if ret_val != 0:
+        sys.exit(ret_val)

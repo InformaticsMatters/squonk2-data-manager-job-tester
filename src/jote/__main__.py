@@ -6,7 +6,7 @@ entry-point for the console script (see setup.py).
 """
 
 import sys
-from .jote import main as jote_main
+from jote.jote import main as jote_main
 
 
 def main() -> int:

@@ -5,36 +5,32 @@
 # January 2022
 
 import os
-from setuptools import setup, find_packages
+import setuptools
 
 # Pull in the essential run-time requirements
-with open('requirements.txt') as file:
-    requirements = file.read().splitlines()
-
+with open('requirements.txt', 'r', encoding='utf-8') as fh:
+    requirements = fh.read().splitlines()
 
 # Use the README.rst as the long description.
-def get_long_description():
-    return open('README.rst').read()
+with open('README.rst', 'r', encoding='utf-8') as fh:
+    long_description = fh.read()
 
+setuptools.setup(
 
-name = 'im-jote'
-author = 'Alan Christie'
-version = os.environ.get('GITHUB_REF_SLUG', '1.0.0')
-copyright = 'MIT'
-setup(
-
-    name=name,
-    version=version,
-    author=author,
+    name='im-jote',
+    version=os.environ.get('GITHUB_REF_SLUG', '1.0.0'),
+    author= 'Alan Christie',
     author_email='achristie@informaticsmatters.com',
     url='https://github.com/informaticsmatters/data-manager-job-tester',
-    license=copyright,
+    license='MIT',
     description='The IM Data Manager Job Tester (jote)',
-    long_description=get_long_description(),
+    long_description=long_description,
     keywords='configuration',
     platforms=['any'],
     # Our modules to package
-    packages=find_packages(exclude=["*.test", "*.test.*", "test.*", "test"]),
+    package_dir={'': 'src'},
+    packages=setuptools.find_packages(where='src',
+                                      exclude=["*.test", "*.test.*", "test.*", "test"]),
     include_package_data=True,
 
     # Project classification:

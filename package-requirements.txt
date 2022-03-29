@@ -1,9 +1,0 @@
-# These are the requirements to package the solution, assuming the testing
-# stage has successfully completed.
-#
-# pip install -r build-requirements.txt
-# pip install -r requirements.txt
-# pip install -r package-requirements.txt
-
-wheel == 0.37.1
-twine == 3.8.0
