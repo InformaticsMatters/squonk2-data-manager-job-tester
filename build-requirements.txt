@@ -1,4 +1,3 @@
-build
 pyroma
 pytest
 pytest-cov
