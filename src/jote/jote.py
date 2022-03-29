@@ -495,9 +495,14 @@ def _test(args: argparse.Namespace,
 
         # Run the container
         if test_status and not args.dry_run:
-            # Run the container
-            assert t_compose
-            exit_code, out, err = t_compose.run()
+
+            if job_image_type in [_IMAGE_TYPE_SIMPLE]:
+                # Run the image container
+                assert t_compose
+                exit_code, out, err = t_compose.run()
+            elif job_image_type in [_IMAGE_TYPE_NEXTFLOW]:
+                # Run nextflow directly
+                pass
 
             # Delete the test directory?
             # Not if there's an error
