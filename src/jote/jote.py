@@ -34,6 +34,11 @@ _VERSION_FILE: str = os.path.join(os.path.dirname(__file__), 'VERSION')
 with open(_VERSION_FILE, 'r', encoding='utf-8') as file_handle:
     _VERSION = file_handle.read().strip()
 
+# Job image types (lower-case)
+_IMAGE_TYPE_SIMPLE: str = 'simple'
+_IMAGE_TYPE_NEXTFLOW: str = 'nextflow'
+_DEFAULT_IMAGE_TYPE: str = _IMAGE_TYPE_SIMPLE
+
 
 def _print_test_banner(collection: str,
                        job_name: str,
@@ -315,6 +320,14 @@ def _test(args: argparse.Namespace,
         job_image_cores = 1
     job_project_directory: str = job_definition.image['project-directory']
     job_working_directory: str = job_definition.image['working-directory']
+    if 'type' in job_definition.image:
+        job_image_type: str = job_definition.image['type'].lower()
+    else:
+        job_image_type = _DEFAULT_IMAGE_TYPE
+
+    # Exclude nextflow image types for now.
+    if job_image_type in [_IMAGE_TYPE_NEXTFLOW]:
+        return tests_passed, tests_skipped, tests_ignored, tests_failed
 
     for job_test_name in job_definition.tests:
 
@@ -456,6 +469,7 @@ def _test(args: argparse.Namespace,
             job_command: str = ''.join(decoded_command.splitlines())
 
             print(f'> image={job_image}')
+            print(f'> image-type={job_image_type}')
             print(f'> command="{job_command}"')
 
             # Create the project
