@@ -322,6 +322,9 @@ def _run_nextflow(command: str,
             print('! You cannot test Jobs and have your own config file')
             return 1, '', ''
 
+    print('# Executing the test ("nextflow")...')
+    print(f'# Execution directory is "{project_path}"')
+
     cwd = os.getcwd()
     os.chdir(project_path)
 
@@ -479,9 +482,13 @@ def _test(args: argparse.Namespace,
         decoded_command: str = ''
         if test_status:
 
-            # Job variables must contain 'built-in' variables: -
+            # Jote injects Job variables that are expected.
+            # 'DM_' variables are injected by the Data Manager,
+            # other are injected by Jote.
             # - DM_INSTANCE_DIRECTORY
             job_variables['DM_INSTANCE_DIRECTORY'] = INSTANCE_DIRECTORY
+            # - CODE_DIRECTORY
+            job_variables['CODE_DIRECTORY'] = os.getcwd()
 
             # Get the raw (encoded) command from the job definition...
             raw_command: str = job_definition.command

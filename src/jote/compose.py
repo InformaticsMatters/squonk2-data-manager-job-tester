@@ -183,10 +183,13 @@ class Compose:
         A non-zero exit code does not necessarily mean the test has failed.
         """
 
+        execution_directory: str = self.get_test_path()
+
         print('# Executing the test ("docker-compose up")...')
+        print(f'# Execution directory is "{execution_directory}"')
 
         cwd = os.getcwd()
-        os.chdir(self.get_test_path())
+        os.chdir(execution_directory)
 
         try:
             # Run the container

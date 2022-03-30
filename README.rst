@@ -60,6 +60,20 @@ You can display the utility's help with::
 
     jote --help
 
+Built-in variables
+------------------
+
+Job definition command-expansion relies on a number of *built in* variables.
+Some are provided by the Data Manager when the Job runs under its control
+(i.e. ``DM_INSTANCE_DIRECTORY``) others are built-in to ``jote``.
+
+The set of variables injected into the command expansion by ``jote``
+are: -
+
+- ``DM_INSTANCE_DIRECTORY``. Set to the path of the simulated instance
+  directory created by ``jote``
+- ``CODE_DIRECTORY``. Set to the root of the repository clone under test
+
 Ignoring tests
 --------------
 
