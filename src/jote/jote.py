@@ -540,7 +540,7 @@ def _test(args: argparse.Namespace,
         # Run the container
         if test_status and not args.dry_run:
 
-            timeout_minutes: Optional[int] = None
+            timeout_minutes: int = DEFAULT_TEST_TIMEOUT_M
             if 'timeout-minutes' in job_definition.tests[job_test_name]:
                 timeout_minutes = job_definition. \
                     tests[job_test_name]['timeout-minutes']
