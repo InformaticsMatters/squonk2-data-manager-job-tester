@@ -36,10 +36,8 @@ services:
 """
 
 _NF_CONFIG_CONTENT: str = """
-docker {
-  enabled = true
-  runOptions = '-u $(id -u):$(id -g)'
-}
+docker.enabled = true
+docker.runOptions = '-u $(id -u):$(id -g)'
 """
 
 

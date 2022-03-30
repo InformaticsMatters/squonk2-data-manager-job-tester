@@ -329,10 +329,11 @@ def _run_nextflow(command: str,
     os.chdir(project_path)
 
     try:
-        test = subprocess.run(command.split(),
+        test = subprocess.run(command,
+                              shell=True,
+                              check=False,
                               capture_output=True,
-                              timeout=timeout_minutes * 60,
-                              check=False)
+                              timeout=timeout_minutes * 60)
     finally:
         os.chdir(cwd)
 
