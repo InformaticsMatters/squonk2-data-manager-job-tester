@@ -1,6 +1,6 @@
 """Informatics Matters Job Tester (JOTE).
 
-get help running the utility with 'jote --help'
+Get help running this utility with 'jote --help'
 """
 import argparse
 import os
@@ -16,7 +16,7 @@ from yamllint.config import YamlLintConfig
 
 from decoder import decoder
 
-from .compose import get_test_root, INSTANCE_DIRECTORY, DEFAULT_TEST_TIMEOUT_S
+from .compose import get_test_root, INSTANCE_DIRECTORY, DEFAULT_TEST_TIMEOUT_M
 from .compose import Compose
 
 # Where can we expect to find Job definitions?
@@ -301,7 +301,9 @@ def _check(t_compose: Compose,
     return True
 
 
-def _run_nextflow(command: str, project_path: str)\
+def _run_nextflow(command: str,
+                  project_path: str,
+                  timeout_minutes: int = DEFAULT_TEST_TIMEOUT_M)\
         -> Tuple[int, str, str]:
     """Runs nextflow in the project directory returning the exit code,
     stdout and stderr.
@@ -326,7 +328,7 @@ def _run_nextflow(command: str, project_path: str)\
     try:
         test = subprocess.run(command.split(),
                               capture_output=True,
-                              timeout=DEFAULT_TEST_TIMEOUT_S,
+                              timeout=timeout_minutes * 60,
                               check=False)
     finally:
         os.chdir(cwd)
@@ -538,18 +540,25 @@ def _test(args: argparse.Namespace,
         # Run the container
         if test_status and not args.dry_run:
 
+            timeout_minutes: Optional[int] = None
+            if 'timeout-minutes' in job_definition.tests[job_test_name]:
+                timeout_minutes = job_definition. \
+                    tests[job_test_name]['timeout-minutes']
+
             exit_code: int = 0
             out: str = ''
             err: str = ''
             if job_image_type in [_IMAGE_TYPE_SIMPLE]:
                 # Run the image container
                 assert t_compose
-                exit_code, out, err = t_compose.run()
+                exit_code, out, err = t_compose.run(timeout_minutes)
             elif job_image_type in [_IMAGE_TYPE_NEXTFLOW]:
                 # Run nextflow directly
                 assert job_command
                 assert project_path
-                exit_code, out, err = _run_nextflow(job_command, project_path)
+                exit_code, out, err = _run_nextflow(job_command,
+                                                    project_path,
+                                                    timeout_minutes)
             else:
                 print('! FAILURE')
                 print(f'! unsupported image-type ({job_image_type}')

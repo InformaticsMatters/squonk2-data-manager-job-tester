@@ -11,8 +11,8 @@ from typing import Any, Dict, Optional, Tuple
 
 INSTANCE_DIRECTORY: str = '.instance-88888888-8888-8888-8888-888888888888'
 
-# A default, 30 minute timeout
-DEFAULT_TEST_TIMEOUT_S: int = 30 * 60
+# A default test execution timeout
+DEFAULT_TEST_TIMEOUT_M: int = 10
 
 # The user id containers will be started as
 _USER_ID: int = 8888
@@ -175,7 +175,8 @@ class Compose:
 
         return project_path
 
-    def run(self) -> Tuple[int, str, str]:
+    def run(self, timeout_minutes: int = DEFAULT_TEST_TIMEOUT_M)\
+            -> Tuple[int, str, str]:
         """Runs the container for the test, expecting the docker-compose file
         written by the 'create()'. The container exit code is returned to the
         caller along with the stdout and stderr content.
@@ -187,7 +188,6 @@ class Compose:
         cwd = os.getcwd()
         os.chdir(self.get_test_path())
 
-        timeout_s: int = DEFAULT_TEST_TIMEOUT_S
         try:
             # Run the container
             # and then cleanup
@@ -195,11 +195,11 @@ class Compose:
                                    '--exit-code-from', 'job',
                                    '--abort-on-container-exit'],
                                   capture_output=True,
-                                  timeout=timeout_s,
+                                  timeout=timeout_minutes * 60,
                                   check=False)
             _ = subprocess.run(['docker-compose', 'down'],
                                capture_output=True,
-                               timeout=120,
+                               timeout=240,
                                check=False)
         finally:
             os.chdir(cwd)

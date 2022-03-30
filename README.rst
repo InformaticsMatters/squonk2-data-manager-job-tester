@@ -9,20 +9,25 @@ The Job Tester (``jote``) is used to run unit tests located in
 Data Manager Job implementation repositories against the Job's
 container image.
 
-Job implementations are required to provide a Manifest file (``manifest.yaml``)
-that lists Job Definition files (in the Job repository's ``data-manager``
-directory). The Manifest names at least ine file and the Job Definition
-should define at least one test for every Job. ``jote`` runs the tests
-but also ensures the repository structure meets the Data Manager requirements.
+Job implementations are required to provide at least one manifest file
+that lists Job Definition files (these reside in the ``data-manager``
+of the repository being tested). The default manifest file is
+``manifest.yaml`` but you can name your own and have more than one.
 
-Tests are defined in the Job definition file. Here's a snippet illustrating a
+Each Manifest must name at least one file and the corresponding
+Job Definition file should define at least one test for every Job.
+``jote`` runs the tests but also ensures the repository structure is as
+expected and applies strict formatting of the YAML files.
+
+Here's a snippet from a Job definition file illustrating a
 Job (``max-min-picker``) with a test called ``simple-execution``.
 
 The test defines an input option (a file) and some other command options.
-The ``checks`` section defines the exit criteria of a successful test.
+The ``checks`` section is used to define the exit criteria of the test.
 In this case the container must exit with code ``0`` and the file
 ``diverse.smi`` must be found (in the mounted project directory), i.e
-it must *exist* and contain ``100`` lines::
+it must *exist* and contain ``100`` lines. ``jote`` will ensure that these
+expectations are satisfied::
 
     jobs:
       [...]
@@ -43,6 +48,21 @@ it must *exist* and contain ``100`` lines::
                 - exists: true
                 - lineCount: 100
 
+Running tests
+-------------
+
+Run ``jote`` from the root of a clone of the Data Manager Job implementation
+repository that you want to test::
+
+    jote
+
+You can display the utility's help with::
+
+    jote --help
+
+Ignoring tests
+--------------
+
 Individual tests can be prevented from being executed by adding an `ignore`
 declaration::
 
@@ -55,6 +75,8 @@ declaration::
             ignore:
             [...]
 
+Test run levels
+---------------
 Tests can be assigned a ``run-level``. Run-levels are numerical value (1..100)
 that can be used to classify your tests, often using it to represent
 execution time. By default all tests that have no run-level and those with
@@ -73,10 +95,57 @@ You define the run-level in the root block of the job specification::
             run-level: 5
             [...]
 
-Installation
-------------
+Test timeouts
+-------------
 
-Pyconf is published on `PyPI`_ and can be installed from
+``jote`` lets each test run for 10 minutes before cancelling (and failing) them.
+If you expect your test to run for more than 10 minutes you can use the
+``timeout-minutes`` property to define your own test-specific value::
+
+    jobs:
+      [...]
+      max-min-picker:
+        [...]
+        tests:
+          simple-execution:
+            timeout-minutes: 120
+            [...]
+
+Remember that job tests are *unit tests*, so long-running tests should be
+discouraged.
+
+Nextflow execution
+------------------
+Job image type can be ``simple`` or ``nextflow``. Simple jobs are executed in
+the container image you've built and should behave much the same as they do
+when run within the Data Manager. Nextflow jobs on the other hand are executed
+using the shell, relying on Docker as the execution run-time for the processes
+in your workflow.
+
+be aware that nextflow tests run by ``jote`` run under different conditions
+compared to those running under the Data Manager's control, where nextflow
+will be executed within a Kubernetes environment rather than docker. This
+introduces variability. Tests that run under ``jote`` *are not* running in the
+same environment or under the same memory or CPU constraints. Remember this
+when testing - i.e. a successful nextflow test under ``jote`` does not
+necessarily mean that it will execute successfully within the Data Manager.
+Successful nextflow tests run with ``jote`` are just and indication that
+the same execution might work in the Data Manager.
+
+It's your responsibility to provide a suitable nextflow for shell execution,
+which ``jote`` simply uses when executing the test's ``command`` that's
+defined in your Job definition.
+
+When running nextflow jobs ``jote`` writes a ``nextflow.config`` to the
+test's simulated project directory prior to executing the command.
+``jote`` *will not* let you have a nextflow config in your home directory
+as any settings found there would be merged with the file ``jote`` writes,
+potentially disturbing the execution behanviour.
+
+Installation
+============
+
+``jote```` is published on `PyPI`_ and can be installed from
 there::
 
     pip install im-jote
@@ -88,18 +157,6 @@ To use the utility you will need to have installed `Docker`_.
 
 .. _PyPI: https://pypi.org/project/im-jote/
 .. _Docker: https://docs.docker.com/get-docker/
-
-Running tests
--------------
-
-Run ``jote`` from the root of a clone of the Data Manager Job implementation
-repository that you want to test::
-
-    jote
-
-You can display the utility's help with::
-
-    jote --help
 
 Get in touch
 ------------
