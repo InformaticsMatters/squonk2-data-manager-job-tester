@@ -35,6 +35,13 @@ services:
     cpus: {cpus}.0
 """
 
+_NF_CONFIG_CONTENT: str = """
+docker {
+  enabled = true
+  runOptions = '-u $(id -u):$(id -g)'
+}
+"""
+
 
 def _get_docker_compose_version() -> str:
 
@@ -66,6 +73,7 @@ class Compose:
                  job: str,
                  test: str,
                  image: str,
+                 image_type: str,
                  memory: str,
                  cores: int,
                  project_directory: str,
@@ -85,6 +93,7 @@ class Compose:
         self._job: str = job
         self._test: str = test
         self._image: str = image
+        self._image_type: str = image_type
         self._cores: int = cores
         self._project_directory: str = project_directory
         self._working_directory: str = working_directory
@@ -121,7 +130,9 @@ class Compose:
             Compose._COMPOSE_VERSION = _get_docker_compose_version()
             print(f'# docker-compose ({Compose._COMPOSE_VERSION})')
 
-        # Make the test directory...
+        # Make the test directory
+        # (where the test is launched from)
+        # and the project directory (a /project sud-directory of test)
         test_path = self.get_test_path()
         project_path: str = self.get_test_project_path()
         inst_path: str = f'{project_path}/{INSTANCE_DIRECTORY}'
@@ -151,6 +162,14 @@ class Compose:
         compose_path: str = f'{test_path}/docker-compose.yml'
         with open(compose_path, 'wt', encoding='UTF-8') as compose_file:
             compose_file.write(compose_content)
+
+        if self._image_type == 'nextflow':
+            # Write a nextflow config to the project path
+            # (this is where the non-container-based nextflow is executed)
+            # and where nextflow will, by default, look for the config.
+            nf_cfg_path: str = f'{project_path}/nextflow.config'
+            with open(nf_cfg_path, 'wt', encoding='UTF-8') as nf_cfg_file:
+                nf_cfg_file.write(_NF_CONFIG_CONTENT)
 
         print('# Created')
 

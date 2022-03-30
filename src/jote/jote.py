@@ -40,6 +40,11 @@ _IMAGE_TYPE_SIMPLE: str = 'simple'
 _IMAGE_TYPE_NEXTFLOW: str = 'nextflow'
 _DEFAULT_IMAGE_TYPE: str = _IMAGE_TYPE_SIMPLE
 
+# User HOME directory.
+# Used to check for netflow files if nextflow is executed.
+# The user CANNOT have any pf their own nextflow config.
+_USR_HOME: str = os.environ.get('HOME', '')
+
 
 def _print_test_banner(collection: str,
                        job_name: str,
@@ -304,6 +309,17 @@ def _run_nextflow(command: str, project_path: str)\
     assert command
     assert project_path
 
+    # The user cannot have a nextflow config in their home directory.
+    # Nextflow looks here and any config will be merged with the test config.
+    if _USR_HOME:
+        home_config: str = os.path.join(_USR_HOME, '.nextflow', 'config')
+        if os.path.exists(home_config) and os.path.isfile(home_config):
+            print('! FAILURE')
+            print('! A nextflow test but'
+                  f' you have your own config file ({home_config})')
+            print('! You cannot test Jobs and have your own config file')
+            return 1, '', ''
+
     cwd = os.getcwd()
     os.chdir(project_path)
 
@@ -502,6 +518,7 @@ def _test(args: argparse.Namespace,
                                 job,
                                 job_test_name,
                                 job_image,
+                                job_image_type,
                                 job_image_memory,
                                 job_image_cores,
                                 job_project_directory,
