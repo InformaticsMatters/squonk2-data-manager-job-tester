@@ -1,4 +1,4 @@
-# Developer Readme
+# Developer README
 
 ## Contributing
 The project uses: -
@@ -35,7 +35,7 @@ To build the package distribution manually run: -
     python -m build --sdist --wheel --outdir dist/
 
 >   Because you're building outside the CI process the version number of
-    the package wil be fixed at 1.0.0. Do not change this behaviour.
+    the package will be fixed at 1.0.0. DO NOT change this behaviour.
 
 To install the local build, without needing to publish the package run: -
 
