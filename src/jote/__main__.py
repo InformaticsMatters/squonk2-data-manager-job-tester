@@ -1,4 +1,4 @@
-#!/usr/bin/env python3
+#!/usr/bin/env python
 
 """An entry-point that allows the module to be executed.
 This also simplifies the distribution as this is the
@@ -14,5 +14,5 @@ def main() -> int:
     return jote_main()
 
 
-if __name__ == '__main__':
+if __name__ == "__main__":
     sys.exit(main())

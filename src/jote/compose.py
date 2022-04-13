@@ -9,7 +9,7 @@ import shutil
 import subprocess
 from typing import Any, Dict, Optional, Tuple
 
-INSTANCE_DIRECTORY: str = '.instance-88888888-8888-8888-8888-888888888888'
+INSTANCE_DIRECTORY: str = ".instance-88888888-8888-8888-8888-888888888888"
 
 # A default test execution timeout
 DEFAULT_TEST_TIMEOUT_M: int = 10
@@ -43,20 +43,20 @@ docker.runOptions = '-u $(id -u):$(id -g)'
 
 def _get_docker_compose_version() -> str:
 
-    result = subprocess.run(['docker-compose', 'version'],
-                            capture_output=True, check=False, timeout=4)
+    result = subprocess.run(
+        ["docker-compose", "version"], capture_output=True, check=False, timeout=4
+    )
 
     # stdout will contain the version on the first line: -
     # "docker-compose version 1.29.2, build unknown"
     # Ignore the first 23 characters of the first line...
-    return str(result.stdout.decode("utf-8").split('\n')[0][23:])
+    return str(result.stdout.decode("utf-8").split("\n")[0][23:])
 
 
 def get_test_root() -> str:
-    """Returns the root of the testing directory.
-    """
+    """Returns the root of the testing directory."""
     cwd: str = os.getcwd()
-    return f'{cwd}/data-manager/jote'
+    return f"{cwd}/data-manager/jote"
 
 
 class Compose:
@@ -67,24 +67,27 @@ class Compose:
     # The docker-compose version (for the first test)
     _COMPOSE_VERSION: Optional[str] = None
 
-    def __init__(self, collection: str,
-                 job: str,
-                 test: str,
-                 image: str,
-                 image_type: str,
-                 memory: str,
-                 cores: int,
-                 project_directory: str,
-                 working_directory: str,
-                 command: str,
-                 user_id: Optional[int] = None):
+    def __init__(
+        self,
+        collection: str,
+        job: str,
+        test: str,
+        image: str,
+        image_type: str,
+        memory: str,
+        cores: int,
+        project_directory: str,
+        working_directory: str,
+        command: str,
+        user_id: Optional[int] = None,
+    ):
 
         # Memory must have a Mi or Gi suffix.
         # For docker-compose we translate to 'm' and 'g'
-        if memory.endswith('Mi'):
-            self._memory: str = f'{memory[:-2]}m'
-        elif memory.endswith('Gi'):
-            self._memory = f'{memory[:-2]}g'
+        if memory.endswith("Mi"):
+            self._memory: str = f"{memory[:-2]}m"
+        elif memory.endswith("Gi"):
+            self._memory = f"{memory[:-2]}g"
         assert self._memory
 
         self._collection: str = collection
@@ -99,16 +102,14 @@ class Compose:
         self._user_id: Optional[int] = user_id
 
     def get_test_path(self) -> str:
-        """Returns the path to the root directory for a given test.
-        """
+        """Returns the path to the root directory for a given test."""
         root: str = get_test_root()
-        return f'{root}/{self._collection}.{self._job}.{self._test}'
+        return f"{root}/{self._collection}.{self._job}.{self._test}"
 
     def get_test_project_path(self) -> str:
-        """Returns the path to the root directory for a given test.
-        """
+        """Returns the path to the root directory for a given test."""
         test_path: str = self.get_test_path()
-        return f'{test_path}/project'
+        return f"{test_path}/project"
 
     def create(self) -> str:
         """Writes a docker-compose file
@@ -116,7 +117,7 @@ class Compose:
         full path to the test (project) directory.
         """
 
-        print('# Creating test environment...')
+        print("# Creating test environment...")
 
         # First, delete
         test_path: str = self.get_test_path()
@@ -126,14 +127,14 @@ class Compose:
         # Do we have the docker-compose version the user's installed?
         if not Compose._COMPOSE_VERSION:
             Compose._COMPOSE_VERSION = _get_docker_compose_version()
-            print(f'# docker-compose ({Compose._COMPOSE_VERSION})')
+            print(f"# docker-compose ({Compose._COMPOSE_VERSION})")
 
         # Make the test directory
         # (where the test is launched from)
         # and the project directory (a /project sud-directory of test)
         test_path = self.get_test_path()
         project_path: str = self.get_test_project_path()
-        inst_path: str = f'{project_path}/{INSTANCE_DIRECTORY}'
+        inst_path: str = f"{project_path}/{INSTANCE_DIRECTORY}"
         if not os.path.exists(inst_path):
             os.makedirs(inst_path)
 
@@ -144,37 +145,39 @@ class Compose:
             user_id = os.getuid()
 
         # Write the Docker compose content to a file in the test directory
-        variables: Dict[str, Any] =\
-            {'test_path': project_path,
-             'job': self._job,
-             'test': self._test,
-             'image': self._image,
-             'memory_limit': self._memory,
-             'cpus': self._cores,
-             'uid': user_id,
-             'command': self._command,
-             'project_directory': self._project_directory,
-             'working_directory': self._working_directory,
-             'instance_directory': INSTANCE_DIRECTORY}
+        variables: Dict[str, Any] = {
+            "test_path": project_path,
+            "job": self._job,
+            "test": self._test,
+            "image": self._image,
+            "memory_limit": self._memory,
+            "cpus": self._cores,
+            "uid": user_id,
+            "command": self._command,
+            "project_directory": self._project_directory,
+            "working_directory": self._working_directory,
+            "instance_directory": INSTANCE_DIRECTORY,
+        }
         compose_content: str = _COMPOSE_CONTENT.format(**variables)
-        compose_path: str = f'{test_path}/docker-compose.yml'
-        with open(compose_path, 'wt', encoding='UTF-8') as compose_file:
+        compose_path: str = f"{test_path}/docker-compose.yml"
+        with open(compose_path, "wt", encoding="UTF-8") as compose_file:
             compose_file.write(compose_content)
 
-        if self._image_type == 'nextflow':
+        if self._image_type == "nextflow":
             # Write a nextflow config to the project path
             # (this is where the non-container-based nextflow is executed)
             # and where nextflow will, by default, look for the config.
-            nf_cfg_path: str = f'{project_path}/nextflow.config'
-            with open(nf_cfg_path, 'wt', encoding='UTF-8') as nf_cfg_file:
+            nf_cfg_path: str = f"{project_path}/nextflow.config"
+            with open(nf_cfg_path, "wt", encoding="UTF-8") as nf_cfg_file:
                 nf_cfg_file.write(_NF_CONFIG_CONTENT)
 
-        print('# Created')
+        print("# Created")
 
         return project_path
 
-    def run(self, timeout_minutes: int = DEFAULT_TEST_TIMEOUT_M)\
-            -> Tuple[int, str, str]:
+    def run(
+        self, timeout_minutes: int = DEFAULT_TEST_TIMEOUT_M
+    ) -> Tuple[int, str, str]:
         """Runs the container for the test, expecting the docker-compose file
         written by the 'create()'. The container exit code is returned to the
         caller along with the stdout and stderr content.
@@ -192,32 +195,37 @@ class Compose:
         try:
             # Run the container
             # and then cleanup
-            test = subprocess.run(['docker-compose', 'up',
-                                   '--exit-code-from', 'job',
-                                   '--abort-on-container-exit'],
-                                  capture_output=True,
-                                  timeout=timeout_minutes * 60,
-                                  check=False)
-            _ = subprocess.run(['docker-compose', 'down'],
-                               capture_output=True,
-                               timeout=240,
-                               check=False)
+            test = subprocess.run(
+                [
+                    "docker-compose",
+                    "up",
+                    "--exit-code-from",
+                    "job",
+                    "--abort-on-container-exit",
+                ],
+                capture_output=True,
+                timeout=timeout_minutes * 60,
+                check=False,
+            )
+            _ = subprocess.run(
+                ["docker-compose", "down"],
+                capture_output=True,
+                timeout=240,
+                check=False,
+            )
         finally:
             os.chdir(cwd)
 
-        print(f'# Executed (exit code {test.returncode})')
+        print(f"# Executed (exit code {test.returncode})")
 
-        return test.returncode,\
-            test.stdout.decode("utf-8"),\
-            test.stderr.decode("utf-8")
+        return test.returncode, test.stdout.decode("utf-8"), test.stderr.decode("utf-8")
 
     def delete(self) -> None:
-        """Deletes a test directory created by 'crete()'.
-        """
-        print('# Deleting the test...')
+        """Deletes a test directory created by 'crete()'."""
+        print("# Deleting the test...")
 
         test_path: str = self.get_test_path()
         if os.path.exists(test_path):
             shutil.rmtree(test_path)
 
-        print('# Deleted')
+        print("# Deleted")

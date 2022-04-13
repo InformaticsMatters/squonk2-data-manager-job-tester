@@ -1,3 +1,5 @@
+#!/usr/bin/env python
+
 """Informatics Matters Job Tester (JOTE).
 
 Get help running this utility with 'jote --help'
@@ -20,51 +22,47 @@ from .compose import get_test_root, INSTANCE_DIRECTORY, DEFAULT_TEST_TIMEOUT_M
 from .compose import Compose
 
 # Where can we expect to find Job definitions?
-_DEFINITION_DIRECTORY: str = 'data-manager'
+_DEFINITION_DIRECTORY: str = "data-manager"
 # What's the default manifest file?
-_DEFAULT_MANIFEST: str = 'manifest.yaml'
+_DEFAULT_MANIFEST: str = "manifest.yaml"
 # Where can we expect to find test data?
-_DATA_DIRECTORY: str = 'data'
+_DATA_DIRECTORY: str = "data"
 
 # Our yamllint configuration file
 # from the same directory as us.
-_YAMLLINT_FILE: str = os.path.join(os.path.dirname(__file__), 'jote.yamllint')
+_YAMLLINT_FILE: str = os.path.join(os.path.dirname(__file__), "jote.yamllint")
 
 # Read the version file
-_VERSION_FILE: str = os.path.join(os.path.dirname(__file__), 'VERSION')
-with open(_VERSION_FILE, 'r', encoding='utf-8') as file_handle:
+_VERSION_FILE: str = os.path.join(os.path.dirname(__file__), "VERSION")
+with open(_VERSION_FILE, "r", encoding="utf-8") as file_handle:
     _VERSION = file_handle.read().strip()
 
 # Job image types (lower-case)
-_IMAGE_TYPE_SIMPLE: str = 'simple'
-_IMAGE_TYPE_NEXTFLOW: str = 'nextflow'
+_IMAGE_TYPE_SIMPLE: str = "simple"
+_IMAGE_TYPE_NEXTFLOW: str = "nextflow"
 _DEFAULT_IMAGE_TYPE: str = _IMAGE_TYPE_SIMPLE
 
 # User HOME directory.
 # Used to check for netflow files if nextflow is executed.
 # The user CANNOT have any pf their own nextflow config.
-_USR_HOME: str = os.environ.get('HOME', '')
+_USR_HOME: str = os.environ.get("HOME", "")
 
 
-def _print_test_banner(collection: str,
-                       job_name: str,
-                       job_test_name: str) -> None:
+def _print_test_banner(collection: str, job_name: str, job_test_name: str) -> None:
 
-    print('  ---')
-    print(f'+ collection={collection} job={job_name} test={job_test_name}')
+    print("  ---")
+    print(f"+ collection={collection} job={job_name} test={job_test_name}")
 
 
 def _lint(definition_filename: str) -> bool:
-    """Lints the provided job definition file.
-    """
+    """Lints the provided job definition file."""
 
     if not os.path.isfile(_YAMLLINT_FILE):
-        print(f'! The yamllint file ({_YAMLLINT_FILE}) is missing')
+        print(f"! The yamllint file ({_YAMLLINT_FILE}) is missing")
         return False
 
-    with open(definition_filename, 'rt', encoding='UTF-8') as definition_file:
-        errors = linter.run(definition_file,
-                            YamlLintConfig(file=_YAMLLINT_FILE))
+    with open(definition_filename, "rt", encoding="UTF-8") as definition_file:
+        errors = linter.run(definition_file, YamlLintConfig(file=_YAMLLINT_FILE))
 
     if errors:
         # We're given a 'generator' and we don't know if there are errors
@@ -83,20 +81,21 @@ def _lint(definition_filename: str) -> bool:
 
 
 def _validate_schema(definition_filename: str) -> bool:
-    """Checks the Job Definition against the decoder's schema.
-    """
+    """Checks the Job Definition against the decoder's schema."""
 
-    with open(definition_filename, 'rt', encoding='UTF-8') as definition_file:
-        job_def: Optional[Dict[str, Any]] =\
-            yaml.load(definition_file, Loader=yaml.FullLoader)
+    with open(definition_filename, "rt", encoding="UTF-8") as definition_file:
+        job_def: Optional[Dict[str, Any]] = yaml.load(
+            definition_file, Loader=yaml.FullLoader
+        )
     assert job_def
 
     # If the decoder returns something there's been an error.
     error: Optional[str] = decoder.validate_job_schema(job_def)
     if error:
-        print(f'! Job definition "{definition_filename}"'
-              ' does not comply with schema')
-        print('! Full response follows:')
+        print(
+            f'! Job definition "{definition_filename}"' " does not comply with schema"
+        )
+        print("! Full response follows:")
         print(error)
         return False
 
@@ -104,20 +103,19 @@ def _validate_schema(definition_filename: str) -> bool:
 
 
 def _validate_manifest_schema(manifest_filename: str) -> bool:
-    """Checks the Manifest against the decoder's schema.
-    """
+    """Checks the Manifest against the decoder's schema."""
 
-    with open(manifest_filename, 'rt', encoding='UTF-8') as definition_file:
-        job_def: Optional[Dict[str, Any]] =\
-            yaml.load(definition_file, Loader=yaml.FullLoader)
+    with open(manifest_filename, "rt", encoding="UTF-8") as definition_file:
+        job_def: Optional[Dict[str, Any]] = yaml.load(
+            definition_file, Loader=yaml.FullLoader
+        )
     assert job_def
 
     # If the decoder returns something there's been an error.
     error: Optional[str] = decoder.validate_manifest_schema(job_def)
     if error:
-        print(f'! Manifest "{manifest_filename}"'
-              ' does not comply with schema')
-        print('! Full response follows:')
+        print(f'! Manifest "{manifest_filename}"' " does not comply with schema")
+        print("! Full response follows:")
         print(error)
         return False
 
@@ -128,19 +126,16 @@ def _check_cwd() -> bool:
     """Checks the execution directory for sanity (cwd). Here we must find
     a data-manager directory
     """
-    expected_directories: List[str] = [_DEFINITION_DIRECTORY,
-                                       _DATA_DIRECTORY]
+    expected_directories: List[str] = [_DEFINITION_DIRECTORY, _DATA_DIRECTORY]
     for expected_directory in expected_directories:
         if not os.path.isdir(expected_directory):
-            print(f'! Expected directory "{expected_directory}"'
-                  ' but it is not here')
+            print(f'! Expected directory "{expected_directory}"' " but it is not here")
             return False
 
     return True
 
 
-def _load(manifest_filename: str, skip_lint: bool)\
-        -> Tuple[List[DefaultMunch], int]:
+def _load(manifest_filename: str, skip_lint: bool) -> Tuple[List[DefaultMunch], int]:
     """Loads definition files listed in the manifest
     and extracts the definitions that contain at least one test. The
     definition blocks for those that have tests (ignored or otherwise)
@@ -151,9 +146,11 @@ def _load(manifest_filename: str, skip_lint: bool)\
     -ve count is returned.
     """
     # Prefix manifest filename with definition directory if required...
-    manifest_path: str = manifest_filename\
-        if manifest_filename.startswith(f'{_DEFINITION_DIRECTORY}/')\
+    manifest_path: str = (
+        manifest_filename
+        if manifest_filename.startswith(f"{_DEFINITION_DIRECTORY}/")
         else os.path.join(_DEFINITION_DIRECTORY, manifest_filename)
+    )
     if not os.path.isfile(manifest_path):
         print(f'! The manifest file is missing ("{manifest_path}")')
         return [], -1
@@ -161,7 +158,7 @@ def _load(manifest_filename: str, skip_lint: bool)\
     if not _validate_manifest_schema(manifest_path):
         return [], -1
 
-    with open(manifest_path, 'r', encoding='UTF-8') as manifest_file:
+    with open(manifest_path, "r", encoding="UTF-8") as manifest_file:
         manifest: Dict[str, Any] = yaml.load(manifest_file, Loader=yaml.FullLoader)
     if manifest:
         manifest_munch: DefaultMunch = DefaultMunch.fromDict(manifest)
@@ -170,7 +167,7 @@ def _load(manifest_filename: str, skip_lint: bool)\
     job_definitions: List[DefaultMunch] = []
     num_tests: int = 0
 
-    for jd_filename in manifest_munch['job-definition-files']:
+    for jd_filename in manifest_munch["job-definition-files"]:
 
         # Does the definition comply with the dschema?
         # No options here - it must.
@@ -183,7 +180,7 @@ def _load(manifest_filename: str, skip_lint: bool)\
             if not _lint(jd_path):
                 return [], -2
 
-        with open(jd_path, 'r', encoding='UTF-8') as jd_file:
+        with open(jd_path, "r", encoding="UTF-8") as jd_file:
             job_def: Dict[str, Any] = yaml.load(jd_file, Loader=yaml.FullLoader)
         if job_def:
             jd_munch: DefaultMunch = DefaultMunch.fromDict(job_def)
@@ -197,30 +194,29 @@ def _load(manifest_filename: str, skip_lint: bool)\
 
 
 def _copy_inputs(test_inputs: List[str], project_path: str) -> bool:
-    """Copies all the test files into the test project directory.
-    """
+    """Copies all the test files into the test project directory."""
 
     # The files are assumed to reside in the repo's 'data' directory.
     print(f'# Copying inputs (from "${{PWD}}/{_DATA_DIRECTORY}")...')
 
-    expected_prefix: str = f'{_DATA_DIRECTORY}/'
+    expected_prefix: str = f"{_DATA_DIRECTORY}/"
     for test_input in test_inputs:
 
-        print(f'# + {test_input}')
+        print(f"# + {test_input}")
 
         if not test_input.startswith(expected_prefix):
-            print('! FAILURE')
+            print("! FAILURE")
             print(f'! Input file {test_input} must start with "{expected_prefix}"')
             return False
         if not os.path.isfile(test_input):
-            print('! FAILURE')
-            print(f'! Missing input file {test_input} ({test_input})')
+            print("! FAILURE")
+            print(f"! Missing input file {test_input} ({test_input})")
             return False
 
         # Looks OK, copy it
         shutil.copy(test_input, project_path)
 
-    print('# Copied')
+    print("# Copied")
 
     return True
 
@@ -229,40 +225,38 @@ def _check_exists(name: str, path: str, expected: bool) -> bool:
 
     exists: bool = os.path.exists(path)
     if expected and not exists:
-        print(f'#   exists ({expected}) [FAILED]')
-        print('! FAILURE')
+        print(f"#   exists ({expected}) [FAILED]")
+        print("! FAILURE")
         print(f'! Check exists "{name}" (does not exist)')
         return False
     if not expected and exists:
-        print(f'#   exists ({expected}) [FAILED]')
-        print('! FAILURE')
+        print(f"#   exists ({expected}) [FAILED]")
+        print("! FAILURE")
         print(f'! Check does not exist "{name}" (exists)')
         return False
 
-    print(f'#   exists ({expected}) [OK]')
+    print(f"#   exists ({expected}) [OK]")
     return True
 
 
 def _check_line_count(name: str, path: str, expected: int) -> bool:
 
     line_count: int = 0
-    with open(path, 'rt', encoding='UTF-8') as check_file:
+    with open(path, "rt", encoding="UTF-8") as check_file:
         for _ in check_file:
             line_count += 1
 
     if line_count != expected:
-        print(f'#   lineCount ({line_count}) [FAILED]')
-        print('! FAILURE')
-        print(f'! Check lineCount {name}'
-              f' (found {line_count}, expected {expected})')
+        print(f"#   lineCount ({line_count}) [FAILED]")
+        print("! FAILURE")
+        print(f"! Check lineCount {name}" f" (found {line_count}, expected {expected})")
         return False
 
-    print(f'#   lineCount ({line_count}) [OK]')
+    print(f"#   lineCount ({line_count}) [OK]")
     return True
 
 
-def _check(t_compose: Compose,
-           output_checks: DefaultMunch) -> bool:
+def _check(t_compose: Compose, output_checks: DefaultMunch) -> bool:
     """Runs the checks on the Job outputs.
     We currently support 'exists' and 'lineCount'.
     """
@@ -271,40 +265,36 @@ def _check(t_compose: Compose,
     assert output_checks
     assert isinstance(output_checks, List)
 
-    print('# Checking...')
+    print("# Checking...")
 
     for output_check in output_checks:
         output_name: str = output_check.name
-        print(f'# - {output_name}')
-        expected_file: str = os.path.join(t_compose.get_test_project_path(),
-                                          output_name)
+        print(f"# - {output_name}")
+        expected_file: str = os.path.join(
+            t_compose.get_test_project_path(), output_name
+        )
 
         for check in output_check.checks:
             check_type: str = list(check.keys())[0]
-            if check_type == 'exists':
-                if not _check_exists(output_name,
-                                     expected_file,
-                                     check.exists):
+            if check_type == "exists":
+                if not _check_exists(output_name, expected_file, check.exists):
                     return False
-            elif check_type == 'lineCount':
-                if not _check_line_count(output_name,
-                                         expected_file,
-                                         check.lineCount):
+            elif check_type == "lineCount":
+                if not _check_line_count(output_name, expected_file, check.lineCount):
                     return False
             else:
-                print('! FAILURE')
-                print(f'! Unknown output check type ({check_type})')
+                print("! FAILURE")
+                print(f"! Unknown output check type ({check_type})")
                 return False
 
-    print('# Checked')
+    print("# Checked")
 
     return True
 
 
-def _run_nextflow(command: str,
-                  project_path: str,
-                  timeout_minutes: int = DEFAULT_TEST_TIMEOUT_M)\
-        -> Tuple[int, str, str]:
+def _run_nextflow(
+    command: str, project_path: str, timeout_minutes: int = DEFAULT_TEST_TIMEOUT_M
+) -> Tuple[int, str, str]:
     """Runs nextflow in the project directory returning the exit code,
     stdout and stderr.
     """
@@ -314,13 +304,15 @@ def _run_nextflow(command: str,
     # The user cannot have a nextflow config in their home directory.
     # Nextflow looks here and any config will be merged with the test config.
     if _USR_HOME:
-        home_config: str = os.path.join(_USR_HOME, '.nextflow', 'config')
+        home_config: str = os.path.join(_USR_HOME, ".nextflow", "config")
         if os.path.exists(home_config) and os.path.isfile(home_config):
-            print('! FAILURE')
-            print('! A nextflow test but'
-                  f' you have your own config file ({home_config})')
-            print('! You cannot test Jobs and have your own config file')
-            return 1, '', ''
+            print("! FAILURE")
+            print(
+                "! A nextflow test but"
+                f" you have your own config file ({home_config})"
+            )
+            print("! You cannot test Jobs and have your own config file")
+            return 1, "", ""
 
     print('# Executing the test ("nextflow")...')
     print(f'# Execution directory is "{project_path}"')
@@ -329,23 +321,22 @@ def _run_nextflow(command: str,
     os.chdir(project_path)
 
     try:
-        test = subprocess.run(command,
-                              shell=True,
-                              check=False,
-                              capture_output=True,
-                              timeout=timeout_minutes * 60)
+        test = subprocess.run(
+            command,
+            shell=True,
+            check=False,
+            capture_output=True,
+            timeout=timeout_minutes * 60,
+        )
     finally:
         os.chdir(cwd)
 
-    return test.returncode,\
-        test.stdout.decode("utf-8"),\
-        test.stderr.decode("utf-8")
+    return test.returncode, test.stdout.decode("utf-8"), test.stderr.decode("utf-8")
 
 
-def _test(args: argparse.Namespace,
-          collection: str,
-          job: str,
-          job_definition: DefaultMunch) -> Tuple[int, int, int, int]:
+def _test(
+    args: argparse.Namespace, collection: str, job: str, job_definition: DefaultMunch
+) -> Tuple[int, int, int, int]:
     """Runs the tests for a specific Job definition returning the number
     of tests passed, skipped (due to run-level), ignored and failed.
     """
@@ -358,17 +349,17 @@ def _test(args: argparse.Namespace,
     tests_ignored: int = 0
     tests_failed: int = 0
 
-    job_image: str = f'{job_definition.image.name}:{job_definition.image.tag}'
-    job_image_memory: str = job_definition.image['memory']
+    job_image: str = f"{job_definition.image.name}:{job_definition.image.tag}"
+    job_image_memory: str = job_definition.image["memory"]
     if job_image_memory is None:
-        job_image_memory = '1Gi'
-    job_image_cores: int = job_definition.image['cores']
+        job_image_memory = "1Gi"
+    job_image_cores: int = job_definition.image["cores"]
     if job_image_cores is None:
         job_image_cores = 1
-    job_project_directory: str = job_definition.image['project-directory']
-    job_working_directory: str = job_definition.image['working-directory']
-    if 'type' in job_definition.image:
-        job_image_type: str = job_definition.image['type'].lower()
+    job_project_directory: str = job_definition.image["project-directory"]
+    job_working_directory: str = job_definition.image["working-directory"]
+    if "type" in job_definition.image:
+        job_image_type: str = job_definition.image["type"].lower()
     else:
         job_image_type = _DEFAULT_IMAGE_TYPE
 
@@ -389,9 +380,9 @@ def _test(args: argparse.Namespace,
         # Does the test have an 'ignore' declaration?
         # Obey it unless the test is named explicitly -
         # i.e. if th user has named a specific test, run it.
-        if 'ignore' in job_definition.tests[job_test_name]:
+        if "ignore" in job_definition.tests[job_test_name]:
             if args.test:
-                print('W Ignoring the ignore: property (told to run this test)')
+                print("W Ignoring the ignore: property (told to run this test)")
             else:
                 print('W Ignoring test (found "ignore")')
                 tests_ignored += 1
@@ -400,17 +391,17 @@ def _test(args: argparse.Namespace,
         # Does the test have a 'run-level' declaration?
         # If so, is it higher than the run-level specified?
         if args.test:
-            print('W Ignoring any run-level check (told to run this test)')
+            print("W Ignoring any run-level check (told to run this test)")
         else:
-            if 'run-level' in job_definition.tests[job_test_name]:
-                run_level = job_definition.tests[job_test_name]['run-level']
-                print(f'> run-level={run_level}')
+            if "run-level" in job_definition.tests[job_test_name]:
+                run_level = job_definition.tests[job_test_name]["run-level"]
+                print(f"> run-level={run_level}")
                 if run_level > args.run_level:
                     print(f'W Skipping test (test is "run-level: {run_level}")')
                     tests_skipped += 1
                     continue
             else:
-                print('> run-level=Undefined')
+                print("> run-level=Undefined")
 
         # Render the command for this test.
 
@@ -418,8 +409,9 @@ def _test(args: argparse.Namespace,
         # and then 'inputs'.
         job_variables: Dict[str, Any] = {}
         for variable in job_definition.tests[job_test_name].options:
-            job_variables[variable] =\
-                job_definition.tests[job_test_name].options[variable]
+            job_variables[variable] = job_definition.tests[job_test_name].options[
+                variable
+            ]
 
         # If the option variable's declaration is 'multiple'
         # it must be handled as a list, e.g. it might be declared like this: -
@@ -453,9 +445,10 @@ def _test(args: argparse.Namespace,
             elif variable in job_definition.variables.inputs.properties:
                 variable_is_input = True
             if not variable_is_option and not variable_is_input:
-                print('! FAILURE')
-                print(f'! Test variable ({variable})' +
-                      ' not declared as input or option')
+                print("! FAILURE")
+                print(
+                    f"! Test variable ({variable})" + " not declared as input or option"
+                )
                 # Record but do no further processing
                 tests_failed += 1
                 test_status = False
@@ -480,29 +473,27 @@ def _test(args: argparse.Namespace,
                 job_variables[variable] = os.path.basename(value)
                 input_files.append(value)
 
-        decoded_command: str = ''
+        decoded_command: str = ""
         if test_status:
 
             # Jote injects Job variables that are expected.
             # 'DM_' variables are injected by the Data Manager,
             # other are injected by Jote.
             # - DM_INSTANCE_DIRECTORY
-            job_variables['DM_INSTANCE_DIRECTORY'] = INSTANCE_DIRECTORY
+            job_variables["DM_INSTANCE_DIRECTORY"] = INSTANCE_DIRECTORY
             # - CODE_DIRECTORY
-            job_variables['CODE_DIRECTORY'] = os.getcwd()
+            job_variables["CODE_DIRECTORY"] = os.getcwd()
 
             # Get the raw (encoded) command from the job definition...
             raw_command: str = job_definition.command
             # Decode it using our variables...
-            decoded_command, test_status =\
-                decoder.decode(raw_command,
-                               job_variables,
-                               'command',
-                               decoder.TextEncoding.JINJA2_3_0)
+            decoded_command, test_status = decoder.decode(
+                raw_command, job_variables, "command", decoder.TextEncoding.JINJA2_3_0
+            )
             if not test_status:
-                print('! FAILURE')
-                print('! Failed to render command')
-                print(f'! error={decoded_command}')
+                print("! FAILURE")
+                print("! Failed to render command")
+                print(f"! error={decoded_command}")
                 # Record but do no further processing
                 tests_failed += 1
                 test_status = False
@@ -510,52 +501,53 @@ def _test(args: argparse.Namespace,
         # Create the test directories, docker-compose file
         # and copy inputs...
         t_compose: Optional[Compose] = None
-        job_command: str = ''
-        project_path: str = ''
+        job_command: str = ""
+        project_path: str = ""
         if test_status:
 
             # The command must not contain new-lines.
             # So split then join the command.
             assert decoded_command
-            job_command = ''.join(decoded_command.splitlines())
+            job_command = "".join(decoded_command.splitlines())
 
-            print(f'> image={job_image}')
-            print(f'> image-type={job_image_type}')
+            print(f"> image={job_image}")
+            print(f"> image-type={job_image_type}")
             print(f'> command="{job_command}"')
 
             # Create the project
-            t_compose = Compose(collection,
-                                job,
-                                job_test_name,
-                                job_image,
-                                job_image_type,
-                                job_image_memory,
-                                job_image_cores,
-                                job_project_directory,
-                                job_working_directory,
-                                job_command,
-                                args.run_as_user)
+            t_compose = Compose(
+                collection,
+                job,
+                job_test_name,
+                job_image,
+                job_image_type,
+                job_image_memory,
+                job_image_cores,
+                job_project_directory,
+                job_working_directory,
+                job_command,
+                args.run_as_user,
+            )
             project_path = t_compose.create()
 
             test_path: str = t_compose.get_test_path()
-            print(f'# path={test_path}')
+            print(f"# path={test_path}")
 
             # Copy the data into the test's project directory.
             # Data's expected to be found in the Job's 'inputs'.
-            print(f'input_files={input_files}')
+            print(f"input_files={input_files}")
             test_status = _copy_inputs(input_files, project_path)
 
         # Run the container
         if test_status and not args.dry_run:
 
             timeout_minutes: int = DEFAULT_TEST_TIMEOUT_M
-            if 'timeout-minutes' in job_definition.tests[job_test_name]:
-                timeout_minutes = job_definition. \
-                    tests[job_test_name]['timeout-minutes']
+            if "timeout-minutes" in job_definition.tests[job_test_name]:
+                timeout_minutes = job_definition.tests[job_test_name]["timeout-minutes"]
 
             exit_code: int = 0
-            out: str = ''
-            err: str = ''
+            out: str = ""
+            err: str = ""
             if job_image_type in [_IMAGE_TYPE_SIMPLE]:
                 # Run the image container
                 assert t_compose
@@ -564,25 +556,28 @@ def _test(args: argparse.Namespace,
                 # Run nextflow directly
                 assert job_command
                 assert project_path
-                exit_code, out, err = _run_nextflow(job_command,
-                                                    project_path,
-                                                    timeout_minutes)
+                exit_code, out, err = _run_nextflow(
+                    job_command, project_path, timeout_minutes
+                )
             else:
-                print('! FAILURE')
-                print(f'! unsupported image-type ({job_image_type}')
+                print("! FAILURE")
+                print(f"! unsupported image-type ({job_image_type}")
                 test_status = False
 
             if test_status:
-                expected_exit_code: int =\
-                    job_definition.tests[job_test_name].checks.exitCode
+                expected_exit_code: int = job_definition.tests[
+                    job_test_name
+                ].checks.exitCode
 
                 if exit_code != expected_exit_code:
-                    print('! FAILURE')
-                    print(f'! exit_code={exit_code}'
-                          f' expected_exit_code={expected_exit_code}')
-                    print('! Test stdout follows...')
+                    print("! FAILURE")
+                    print(
+                        f"! exit_code={exit_code}"
+                        f" expected_exit_code={expected_exit_code}"
+                    )
+                    print("! Test stdout follows...")
                     print(out)
-                    print('! Test stderr follows...')
+                    print("! Test stderr follows...")
                     print(err)
                     test_status = False
 
@@ -591,14 +586,16 @@ def _test(args: argparse.Namespace,
 
         # Inspect the results
         # (only if successful so far)
-        if test_status\
-                and not args.dry_run\
-                and job_definition.tests[job_test_name].checks.outputs:
+        if (
+            test_status
+            and not args.dry_run
+            and job_definition.tests[job_test_name].checks.outputs
+        ):
 
             assert t_compose
-            test_status = \
-                _check(t_compose,
-                       job_definition.tests[job_test_name].checks.outputs)
+            test_status = _check(
+                t_compose, job_definition.tests[job_test_name].checks.outputs
+            )
 
         # Clean-up
         if test_status and not args.keep_results:
@@ -619,32 +616,29 @@ def _test(args: argparse.Namespace,
 
 
 def _wipe() -> None:
-    """Wipes the results of all tests.
-    """
+    """Wipes the results of all tests."""
     test_root: str = get_test_root()
     if os.path.isdir(test_root):
         shutil.rmtree(test_root)
 
 
 def arg_check_run_level(value: str) -> int:
-    """A type checker for the argparse run-level.
-    """
+    """A type checker for the argparse run-level."""
     i_value = int(value)
     if i_value < 1:
-        raise argparse.ArgumentTypeError('Minimum value is 1')
+        raise argparse.ArgumentTypeError("Minimum value is 1")
     if i_value > 100:
-        raise argparse.ArgumentTypeError('Maximum value is 100')
+        raise argparse.ArgumentTypeError("Maximum value is 100")
     return i_value
 
 
 def arg_check_run_as_user(value: str) -> int:
-    """A type checker for the argparse run-as-user.
-    """
+    """A type checker for the argparse run-as-user."""
     i_value = int(value)
     if i_value < 0:
-        raise argparse.ArgumentTypeError('Minimum value is 0')
+        raise argparse.ArgumentTypeError("Minimum value is 0")
     if i_value > 65_535:
-        raise argparse.ArgumentTypeError('Maximum value is 65535')
+        raise argparse.ArgumentTypeError("Maximum value is 65535")
     return i_value
 
 
@@ -658,84 +652,129 @@ def main() -> int:
 
     # Build a command-line parser
     # and process the command-line...
-    arg_parser: argparse.ArgumentParser = argparse\
-        .ArgumentParser(description='Data Manager Job Tester',
-                        formatter_class=argparse.ArgumentDefaultsHelpFormatter)
+    arg_parser: argparse.ArgumentParser = argparse.ArgumentParser(
+        description="Data Manager Job Tester",
+        formatter_class=argparse.ArgumentDefaultsHelpFormatter,
+    )
 
-    arg_parser.add_argument('-m', '--manifest',
-                            help='The manifest file.',
-                            default=_DEFAULT_MANIFEST,
-                            type=str)
-    arg_parser.add_argument('-c', '--collection',
-                            help='The Job collection to test. If not'
-                                 ' specified the Jobs in all collections'
-                                 ' will be candidates for testing.')
-    arg_parser.add_argument('-j', '--job',
-                            help='The Job to test. If specified the collection'
-                                 ' is required. If not specified all the Jobs'
-                                 ' that match the collection will be'
-                                 ' candidates for testing.')
-    arg_parser.add_argument('-t', '--test',
-                            help='A specific test to run. If specified the job'
-                                 ' is required. If not specified all the Tests'
-                                 ' that match the collection will be'
-                                 ' candidates for testing.')
-    arg_parser.add_argument('-r', '--run-level',
-                            help='The run-level of the tests you want to'
-                                 ' execute. All tests at or below this level'
-                                 ' will be executed, a value from 1 to 100',
-                            default=1,
-                            type=arg_check_run_level)
-    arg_parser.add_argument('-u', '--run-as-user',
-                            help='A user ID to run the tests as. If not set'
-                                 ' your user ID is used to run the test'
-                                 ' containers.',
-                            type=arg_check_run_as_user)
+    arg_parser.add_argument(
+        "-m",
+        "--manifest",
+        help="The manifest file.",
+        default=_DEFAULT_MANIFEST,
+        type=str,
+    )
+    arg_parser.add_argument(
+        "-c",
+        "--collection",
+        help="The Job collection to test. If not"
+        " specified the Jobs in all collections"
+        " will be candidates for testing.",
+    )
+    arg_parser.add_argument(
+        "-j",
+        "--job",
+        help="The Job to test. If specified the collection"
+        " is required. If not specified all the Jobs"
+        " that match the collection will be"
+        " candidates for testing.",
+    )
+    arg_parser.add_argument(
+        "-t",
+        "--test",
+        help="A specific test to run. If specified the job"
+        " is required. If not specified all the Tests"
+        " that match the collection will be"
+        " candidates for testing.",
+    )
+    arg_parser.add_argument(
+        "-r",
+        "--run-level",
+        help="The run-level of the tests you want to"
+        " execute. All tests at or below this level"
+        " will be executed, a value from 1 to 100",
+        default=1,
+        type=arg_check_run_level,
+    )
+    arg_parser.add_argument(
+        "-u",
+        "--run-as-user",
+        help="A user ID to run the tests as. If not set"
+        " your user ID is used to run the test"
+        " containers.",
+        type=arg_check_run_as_user,
+    )
 
-    arg_parser.add_argument('-d', '--dry-run', action='store_true',
-                            help='Setting this flag will result in jote'
-                                 ' simply parsing the Job definitions'
-                                 ' but not running any of the tests.'
-                                 ' It is can be used to check the syntax of'
-                                 ' your definition file and its test commands'
-                                 ' and data.')
+    arg_parser.add_argument(
+        "-d",
+        "--dry-run",
+        action="store_true",
+        help="Setting this flag will result in jote"
+        " simply parsing the Job definitions"
+        " but not running any of the tests."
+        " It is can be used to check the syntax of"
+        " your definition file and its test commands"
+        " and data.",
+    )
 
-    arg_parser.add_argument('-k', '--keep-results', action='store_true',
-                            help='Normally all material created to run each'
-                                 ' test is removed when the test is'
-                                 ' successful')
+    arg_parser.add_argument(
+        "-k",
+        "--keep-results",
+        action="store_true",
+        help="Normally all material created to run each"
+        " test is removed when the test is"
+        " successful",
+    )
 
-    arg_parser.add_argument('-v', '--verbose', action='store_true',
-                            help='Displays test stdout')
+    arg_parser.add_argument(
+        "-v", "--verbose", action="store_true", help="Displays test stdout"
+    )
 
-    arg_parser.add_argument('--version', action='store_true',
-                            help='Displays jote version')
+    arg_parser.add_argument(
+        "--version", action="store_true", help="Displays jote version"
+    )
 
-    arg_parser.add_argument('-x', '--exit-on-failure', action='store_true',
-                            help='Normally jote reports test failures but'
-                                 ' continues with the next test.'
-                                 ' Setting this flag will force jote to'
-                                 ' stop when it encounters the first failure')
+    arg_parser.add_argument(
+        "-x",
+        "--exit-on-failure",
+        action="store_true",
+        help="Normally jote reports test failures but"
+        " continues with the next test."
+        " Setting this flag will force jote to"
+        " stop when it encounters the first failure",
+    )
 
-    arg_parser.add_argument('-s', '--skip-lint', action='store_true',
-                            help='Normally jote runs the job definition'
-                                 ' files against the prevailing lint'
-                                 ' configuration of the repository under test.'
-                                 ' Using this flag skips that step')
+    arg_parser.add_argument(
+        "-s",
+        "--skip-lint",
+        action="store_true",
+        help="Normally jote runs the job definition"
+        " files against the prevailing lint"
+        " configuration of the repository under test."
+        " Using this flag skips that step",
+    )
 
-    arg_parser.add_argument('-w', '--wipe', action='store_true',
-                            help='Wipe does nto run any tests, it simply'
-                                 ' wipes the repository clean of jote'
-                                 ' test material. It would be wise'
-                                 ' to run this once you have finished testing.'
-                                 ' Using this negates the effect of any other'
-                                 ' option.')
+    arg_parser.add_argument(
+        "-w",
+        "--wipe",
+        action="store_true",
+        help="Wipe does nto run any tests, it simply"
+        " wipes the repository clean of jote"
+        " test material. It would be wise"
+        " to run this once you have finished testing."
+        " Using this negates the effect of any other"
+        " option.",
+    )
 
-    arg_parser.add_argument('-a', '--allow-no-tests', action='store_true',
-                            help='Normally jote expects to run tests'
-                                 ' and if you have no tests jote will fail.'
-                                 ' To prevent jote complaining about the lack'
-                                 ' of tests you can use this option.')
+    arg_parser.add_argument(
+        "-a",
+        "--allow-no-tests",
+        action="store_true",
+        help="Normally jote expects to run tests"
+        " and if you have no tests jote will fail."
+        " To prevent jote complaining about the lack"
+        " of tests you can use this option.",
+    )
 
     args: argparse.Namespace = arg_parser.parse_args()
 
@@ -745,11 +784,11 @@ def main() -> int:
         return 0
 
     if args.test and args.job is None:
-        arg_parser.error('--test requires --job')
+        arg_parser.error("--test requires --job")
     if args.job and args.collection is None:
-        arg_parser.error('--job requires --collection')
+        arg_parser.error("--job requires --collection")
     if args.wipe and args.keep_results:
-        arg_parser.error('Cannot use --wipe and --keep-results')
+        arg_parser.error("Cannot use --wipe and --keep-results")
 
     # Args are OK if we get here.
     total_passed_count: int = 0
@@ -759,15 +798,15 @@ def main() -> int:
 
     # Check CWD
     if not _check_cwd():
-        print('! FAILURE')
-        print('! The directory does not look correct')
-        arg_parser.error('Done (FAILURE)')
+        print("! FAILURE")
+        print("! The directory does not look correct")
+        arg_parser.error("Done (FAILURE)")
 
     # Told to wipe?
     # If so wipe, and leave.
     if args.wipe:
         _wipe()
-        print('Done [Wiped]')
+        print("Done [Wiped]")
         return 0
 
     print(f'# Using manifest "{args.manifest}"')
@@ -775,12 +814,12 @@ def main() -> int:
     # Load all the files we can and then run the tests.
     job_definitions, num_tests = _load(args.manifest, args.skip_lint)
     if num_tests < 0:
-        print('! FAILURE')
-        print('! Definition file has failed yamllint')
-        arg_parser.error('Done (FAILURE)')
+        print("! FAILURE")
+        print("! Definition file has failed yamllint")
+        arg_parser.error("Done (FAILURE)")
 
-    msg: str = 'test' if num_tests == 1 else 'tests'
-    print(f'# Found {num_tests} {msg}')
+    msg: str = "test" if num_tests == 1 else "tests"
+    print(f"# Found {num_tests} {msg}")
     if args.collection:
         print(f'# Limiting to Collection "{args.collection}"')
     if args.job:
@@ -805,11 +844,9 @@ def main() -> int:
                     continue
 
                 if job_definition.jobs[job_name].tests:
-                    num_passed, num_skipped, num_ignored, num_failed =\
-                        _test(args,
-                              collection,
-                              job_name,
-                              job_definition.jobs[job_name])
+                    num_passed, num_skipped, num_ignored, num_failed = _test(
+                        args, collection, job_name, job_definition.jobs[job_name]
+                    )
                     total_passed_count += num_passed
                     total_skipped_count += num_skipped
                     total_ignore_count += num_ignored
@@ -825,23 +862,25 @@ def main() -> int:
 
     # Success or failure?
     # It's an error to find no tests.
-    print('  ---')
-    dry_run: str = '[DRY RUN]' if args.dry_run else ''
-    summary: str = f'passed={total_passed_count}' \
-        f' skipped={total_skipped_count}' \
-        f' ignored={total_ignore_count}' \
-        f' failed={total_failed_count}'
+    print("  ---")
+    dry_run: str = "[DRY RUN]" if args.dry_run else ""
+    summary: str = (
+        f"passed={total_passed_count}"
+        f" skipped={total_skipped_count}"
+        f" ignored={total_ignore_count}"
+        f" failed={total_failed_count}"
+    )
     failed: bool = False
     if total_failed_count:
-        arg_parser.error(f'Done (FAILURE) {summary} {dry_run}')
+        arg_parser.error(f"Done (FAILURE) {summary} {dry_run}")
         failed = True
     elif total_passed_count == 0 and not args.allow_no_tests:
-        arg_parser.error(f'Done (FAILURE) {summary}'
-                         f' (at least one test must pass)'
-                         f' {dry_run}')
+        arg_parser.error(
+            f"Done (FAILURE) {summary}" f" (at least one test must pass)" f" {dry_run}"
+        )
         failed = True
     else:
-        print(f'Done (OK) {summary} {dry_run}')
+        print(f"Done (OK) {summary} {dry_run}")
 
     # Automatically wipe.
     # If there have been no failures
@@ -855,7 +894,7 @@ def main() -> int:
 # -----------------------------------------------------------------------------
 # MAIN
 # -----------------------------------------------------------------------------
-if __name__ == '__main__':
+if __name__ == "__main__":
 
     _RET_VAL: int = main()
     if _RET_VAL != 0:
