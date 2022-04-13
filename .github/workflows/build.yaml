@@ -45,8 +45,7 @@ jobs:
         pip install -r build-requirements.txt
     - name: Test
       run: |
-        pylint src
-        mypy src --install-types --non-interactive
+        pre-commit run --all-files
         pyroma .
     - name: Build
       run: |
