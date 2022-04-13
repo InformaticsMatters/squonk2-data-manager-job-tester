@@ -7,6 +7,8 @@ Get help running this utility with 'jote --help'
 import argparse
 import os
 import shutil
+import stat
+from stat import S_IRGRP, S_IRUSR, S_IWGRP, S_IWUSR
 import subprocess
 import sys
 from typing import Any, Dict, List, Optional, Tuple
@@ -188,6 +190,7 @@ def _load(manifest_filename: str, skip_lint: bool) -> Tuple[List[DefaultMunch], 
                 if jd_munch.jobs[jd_name].tests:
                     num_tests += len(jd_munch.jobs[jd_name].tests)
             if num_tests:
+                jd_munch.definition_filename = jd_filename
                 job_definitions.append(jd_munch)
 
     return job_definitions, num_tests
@@ -234,6 +237,29 @@ def _check_exists(name: str, path: str, expected: bool) -> bool:
         print("! FAILURE")
         print(f'! Check does not exist "{name}" (exists)')
         return False
+
+    # File exists or does not exist, as expected.
+    # If it exists we check its 'user' and group read and write permission.
+    # All files generated must be writable by the group (project).
+    if exists:
+        stat_info: os.stat_result = os.stat(path)
+        # Check user permissions
+        file_mode: int = stat_info.st_mode
+        if file_mode & S_IRUSR == 0 or file_mode & S_IWUSR == 0:
+            print("! FAILURE")
+            print(
+                f'! "{name}" exists but has incorrect user permissions'
+                f" ({stat.filemode(file_mode)})"
+            )
+            return False
+        # Check group permissions
+        if file_mode & S_IRGRP == 0 or file_mode & S_IWGRP == 0:
+            print("! FAILURE")
+            print(
+                f'! "{name}" exists but has incorrect group permissions'
+                f" ({stat.filemode(file_mode)})"
+            )
+            return False
 
     print(f"#   exists ({expected}) [OK]")
     return True
@@ -335,7 +361,11 @@ def _run_nextflow(
 
 
 def _test(
-    args: argparse.Namespace, collection: str, job: str, job_definition: DefaultMunch
+    args: argparse.Namespace,
+    filename: str,
+    collection: str,
+    job: str,
+    job_definition: DefaultMunch,
 ) -> Tuple[int, int, int, int]:
     """Runs the tests for a specific Job definition returning the number
     of tests passed, skipped (due to run-level), ignored and failed.
@@ -376,6 +406,7 @@ def _test(
         # The status changes to False if any
         # part of this block fails.
         test_status: bool = True
+        print(f'> definition filename="{filename}"')
 
         # Does the test have an 'ignore' declaration?
         # Obey it unless the test is named explicitly -
@@ -845,7 +876,11 @@ def main() -> int:
 
                 if job_definition.jobs[job_name].tests:
                     num_passed, num_skipped, num_ignored, num_failed = _test(
-                        args, collection, job_name, job_definition.jobs[job_name]
+                        args,
+                        job_definition.definition_filename,
+                        collection,
+                        job_name,
+                        job_definition.jobs[job_name],
                     )
                     total_passed_count += num_passed
                     total_skipped_count += num_skipped
