@@ -25,7 +25,8 @@ services:
     image: {image}
     container_name: {job}-{test}-jote
     user: '{uid}'
-    command: {command}
+    entrypoint: /bin/sh
+    command: {working_directory}/{instance_directory}/command
     working_dir: {working_directory}
     volumes:
     - /var/run/docker.sock:/var/run/docker.sock
@@ -161,7 +162,6 @@ class Compose:
             "memory_limit": self._memory,
             "cpus": self._cores,
             "uid": user_id,
-            "command": self._command,
             "project_directory": self._project_directory,
             "working_directory": self._working_directory,
             "instance_directory": INSTANCE_DIRECTORY,
@@ -172,6 +172,12 @@ class Compose:
         with open(compose_path, "wt", encoding="UTF-8") as compose_file:
             compose_file.write(compose_content)
 
+        # Now write the command to the instance directory, as `command`.
+        command_path: str = f"{inst_path}/command"
+        with open(command_path, "wt", encoding="UTF-8") as command_file:
+            command_file.write(self._command)
+
+        # nextflow config?
         if self._image_type == "nextflow":
             # Write a nextflow config to the project path
             # (this is where the non-container-based nextflow is executed)
