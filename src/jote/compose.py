@@ -236,7 +236,7 @@ class Compose:
         return test.returncode, test.stdout.decode("utf-8"), test.stderr.decode("utf-8")
 
     def delete(self) -> None:
-        """Deletes a test directory created by 'crete()'."""
+        """Deletes a test directory created by 'create()'."""
         print("# Deleting the test...")
 
         test_path: str = self.get_test_path()
