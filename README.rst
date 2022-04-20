@@ -221,7 +221,7 @@ potentially disturbing the execution behaviour.
 Installation
 ============
 
-``jote```` is published on `PyPI`_ and can be installed from there::
+``jote`` is published on `PyPI`_ and can be installed from there::
 
     pip install im-jote
 
