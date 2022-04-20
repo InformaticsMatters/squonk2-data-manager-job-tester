@@ -505,6 +505,7 @@ def _test(
                 input_files.append(value)
 
         decoded_command: str = ""
+        test_environment: Dict[str, str] = {}
         if test_status:
 
             # Jote injects Job variables that are expected.
@@ -515,19 +516,39 @@ def _test(
             # - CODE_DIRECTORY
             job_variables["CODE_DIRECTORY"] = os.getcwd()
 
-            # Get the raw (encoded) command from the job definition...
-            raw_command: str = job_definition.command
-            # Decode it using our variables...
-            decoded_command, test_status = decoder.decode(
-                raw_command, job_variables, "command", decoder.TextEncoding.JINJA2_3_0
-            )
-            if not test_status:
-                print("! FAILURE")
-                print("! Failed to render command")
-                print(f"! error={decoded_command}")
-                # Record but do no further processing
-                tests_failed += 1
-                test_status = False
+            # Has the user defined any environment variables in the test?
+            # If so they must exist, although we don't care about their value.
+            # Extract them here to pass to the test.
+            if "environment" in job_definition.tests[job_test_name]:
+                for env_name in job_definition.tests[job_test_name].environment:
+                    env_value: Optional[str] = os.environ.get(env_name, None)
+                    if env_value is None:
+                        print("! FAILURE")
+                        print("! Test environment variable is not defined")
+                        print(f"! variable={env_name}")
+                        # Record but do no further processing
+                        tests_failed += 1
+                        test_status = False
+                        break
+                    test_environment[env_name] = env_value
+
+            if test_status:
+                # Get the raw (encoded) command from the job definition...
+                raw_command: str = job_definition.command
+                # Decode it using our variables...
+                decoded_command, test_status = decoder.decode(
+                    raw_command,
+                    job_variables,
+                    "command",
+                    decoder.TextEncoding.JINJA2_3_0,
+                )
+                if not test_status:
+                    print("! FAILURE")
+                    print("! Failed to render command")
+                    print(f"! error={decoded_command}")
+                    # Record but do no further processing
+                    tests_failed += 1
+                    test_status = False
 
         # Create the test directories, docker-compose file
         # and copy inputs...
@@ -557,6 +578,7 @@ def _test(
                 job_project_directory,
                 job_working_directory,
                 job_command,
+                test_environment,
                 args.run_as_user,
             )
             project_path = t_compose.create()

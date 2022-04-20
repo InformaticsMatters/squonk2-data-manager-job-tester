@@ -4,6 +4,7 @@ This module is responsible for injecting a docker-compose file into the
 repository of the Data Manager Job repository under test. It also
 executes docker-compose and can remove the test directory.
 """
+import copy
 import os
 import shutil
 import subprocess
@@ -26,13 +27,14 @@ services:
     user: '{uid}'
     command: {command}
     working_dir: {working_directory}
-    environment:
-    - DM_INSTANCE_DIRECTORY={instance_directory}
     volumes:
     - /var/run/docker.sock:/var/run/docker.sock
     - {test_path}:{project_directory}
     mem_limit: {memory_limit}
     cpus: {cpus}.0
+    environment:
+    - DM_INSTANCE_DIRECTORY={instance_directory}
+{additional_environment}
 """
 
 _NF_CONFIG_CONTENT: str = """
@@ -79,6 +81,7 @@ class Compose:
         project_directory: str,
         working_directory: str,
         command: str,
+        test_environment: Dict[str, str],
         user_id: Optional[int] = None,
     ):
 
@@ -99,6 +102,7 @@ class Compose:
         self._project_directory: str = project_directory
         self._working_directory: str = working_directory
         self._command: str = command
+        self._test_environment = copy.deepcopy(test_environment)
         self._user_id: Optional[int] = user_id
 
     def get_test_path(self) -> str:
@@ -145,6 +149,10 @@ class Compose:
             user_id = os.getuid()
 
         # Write the Docker compose content to a file in the test directory
+        additional_environment: str = ""
+        if self._test_environment:
+            for e_name, e_value in self._test_environment.items():
+                additional_environment += f"    - {e_name}='{e_value}'\n"
         variables: Dict[str, Any] = {
             "test_path": project_path,
             "job": self._job,
@@ -157,6 +165,7 @@ class Compose:
             "project_directory": self._project_directory,
             "working_directory": self._working_directory,
             "instance_directory": INSTANCE_DIRECTORY,
+            "additional_environment": additional_environment,
         }
         compose_content: str = _COMPOSE_CONTENT.format(**variables)
         compose_path: str = f"{test_path}/docker-compose.yml"
