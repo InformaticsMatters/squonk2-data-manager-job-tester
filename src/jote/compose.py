@@ -25,8 +25,8 @@ services:
     image: {image}
     container_name: {job}-{test}-jote
     user: '{uid}'
-    entrypoint: /bin/sh
-    command: {working_directory}/{instance_directory}/command
+    entrypoint: {working_directory}/{instance_directory}/command
+    command: []
     working_dir: {working_directory}
     volumes:
     - /var/run/docker.sock:/var/run/docker.sock
@@ -175,7 +175,10 @@ class Compose:
         # Now write the command to the instance directory, as `command`.
         command_path: str = f"{inst_path}/command"
         with open(command_path, "wt", encoding="UTF-8") as command_file:
-            command_file.write(self._command)
+            command_file.write("#!/bin/sh\numask 0002\n")
+            command_file.write(self._command + "\n")
+        # And set read/write/execute permission...
+        os.chmod(command_path, 0o775)
 
         # nextflow config?
         if self._image_type == "nextflow":
