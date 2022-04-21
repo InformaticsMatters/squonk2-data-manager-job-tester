@@ -224,7 +224,7 @@ def _copy_inputs(test_inputs: List[str], project_path: str) -> bool:
     return True
 
 
-def _check_exists(name: str, path: str, expected: bool) -> bool:
+def _check_exists(name: str, path: str, expected: bool, fix_permissions: bool) -> bool:
 
     exists: bool = os.path.exists(path)
     if expected and not exists:
@@ -239,8 +239,11 @@ def _check_exists(name: str, path: str, expected: bool) -> bool:
         return False
 
     # File exists or does not exist, as expected.
-    # If it exists we check its 'user' and group read and write permission.
-    # All files generated must be writable by the group (project).
+    # If it exists we check its 'user' and 'group' read and write permission.
+    #
+    # If 'fix_permissions' is True (i.e. the DM is expected to fix (group) permissions)
+    # the group permissions are expected to be incorrect. If False
+    # then the group permissions are expected to be correct/
     if exists:
         stat_info: os.stat_result = os.stat(path)
         # Check user permissions
@@ -254,12 +257,25 @@ def _check_exists(name: str, path: str, expected: bool) -> bool:
             return False
         # Check group permissions
         if file_mode & S_IRGRP == 0 or file_mode & S_IWGRP == 0:
-            print("! FAILURE")
-            print(
-                f'! "{name}" exists but has incorrect group permissions'
-                f" ({stat.filemode(file_mode)})"
-            )
-            return False
+            # Incorrect permissions.
+            if not fix_permissions:
+                # And not told to fix them!
+                print("! FAILURE")
+                print(
+                    f'! "{name}" exists but has incorrect group permissions (fix-permissions=False)'
+                    f" ({stat.filemode(file_mode)})"
+                )
+                return False
+        else:
+            # Correct group permissions.
+            if fix_permissions:
+                # But told to fix them!
+                print("! FAILURE")
+                print(
+                    f'! "{name}" exists but has correct group permissions (fix-permissions=True)'
+                    f" ({stat.filemode(file_mode)})"
+                )
+                return False
 
     print(f"#   exists ({expected}) [OK]")
     return True
@@ -282,9 +298,13 @@ def _check_line_count(name: str, path: str, expected: int) -> bool:
     return True
 
 
-def _check(t_compose: Compose, output_checks: DefaultMunch) -> bool:
+def _check(
+    t_compose: Compose, output_checks: DefaultMunch, fix_permissions: bool
+) -> bool:
     """Runs the checks on the Job outputs.
     We currently support 'exists' and 'lineCount'.
+    If 'fix_permissions' is True we error if the permissions are correct,
+    if False we error if the permissions are not correct.
     """
     assert t_compose
     assert isinstance(t_compose, Compose)
@@ -303,7 +323,9 @@ def _check(t_compose: Compose, output_checks: DefaultMunch) -> bool:
         for check in output_check.checks:
             check_type: str = list(check.keys())[0]
             if check_type == "exists":
-                if not _check_exists(output_name, expected_file, check.exists):
+                if not _check_exists(
+                    output_name, expected_file, check.exists, fix_permissions
+                ):
                     return False
             elif check_type == "lineCount":
                 if not _check_line_count(output_name, expected_file, check.lineCount):
@@ -392,6 +414,13 @@ def _test(
         job_image_type: str = job_definition.image["type"].lower()
     else:
         job_image_type = _DEFAULT_IMAGE_TYPE
+    # Does the image need the (group write) permissions
+    # of files it creates fixing? Default is 'no'.
+    # If 'yes' (true) the DM is expected to fix the permissions of the
+    # generated files once the job has finished.
+    job_image_fix_permissions: bool = False
+    if "fix-permissions" in job_definition.image:
+        job_image_fix_permissions = job_definition.image["fix-permissions"]
 
     for job_test_name in job_definition.tests:
 
@@ -647,7 +676,9 @@ def _test(
 
             assert t_compose
             test_status = _check(
-                t_compose, job_definition.tests[job_test_name].checks.outputs
+                t_compose,
+                job_definition.tests[job_test_name].checks.outputs,
+                job_image_fix_permissions,
             )
 
         # Clean-up
