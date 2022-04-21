@@ -657,6 +657,7 @@ def _test(
 
         # Count?
         if test_status:
+            print("- SUCCESS")
             tests_passed += 1
         else:
             tests_failed += 1
