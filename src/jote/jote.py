@@ -435,7 +435,7 @@ def _test(
         # The status changes to False if any
         # part of this block fails.
         test_status: bool = True
-        print(f'> definition filename="{filename}"')
+        print(f"> definition filename={filename}")
 
         # Does the test have an 'ignore' declaration?
         # Obey it unless the test is named explicitly -
@@ -495,43 +495,45 @@ def _test(
         input_files: List[str] = []
 
         # Process every 'input'
-        for variable in job_definition.tests[job_test_name].inputs:
-            # Test variable must be known as an input or option.
-            # Is the variable an option (otherwise it's an input)
-            variable_is_option: bool = False
-            variable_is_input: bool = False
-            if variable in job_definition.variables.options.properties:
-                variable_is_option = True
-            elif variable in job_definition.variables.inputs.properties:
-                variable_is_input = True
-            if not variable_is_option and not variable_is_input:
-                print("! FAILURE")
-                print(
-                    f"! Test variable ({variable})" + " not declared as input or option"
-                )
-                # Record but do no further processing
-                tests_failed += 1
-                test_status = False
-            # Is it declared as a list?
-            value_is_list: bool = False
-            if variable_is_option:
-                if job_definition.variables.options.properties[variable].multiple:
-                    value_is_list = True
-            else:
-                if job_definition.variables.inputs.properties[variable].multiple:
-                    value_is_list = True
+        if job_definition.tests[job_test_name].inputs:
+            for variable in job_definition.tests[job_test_name].inputs:
+                # Test variable must be known as an input or option.
+                # Is the variable an option (otherwise it's an input)
+                variable_is_option: bool = False
+                variable_is_input: bool = False
+                if variable in job_definition.variables.options.properties:
+                    variable_is_option = True
+                elif variable in job_definition.variables.inputs.properties:
+                    variable_is_input = True
+                if not variable_is_option and not variable_is_input:
+                    print("! FAILURE")
+                    print(
+                        f"! Test variable ({variable})"
+                        + " not declared as input or option"
+                    )
+                    # Record but do no further processing
+                    tests_failed += 1
+                    test_status = False
+                # Is it declared as a list?
+                value_is_list: bool = False
+                if variable_is_option:
+                    if job_definition.variables.options.properties[variable].multiple:
+                        value_is_list = True
+                else:
+                    if job_definition.variables.inputs.properties[variable].multiple:
+                        value_is_list = True
 
-            # Add each value or just one value
-            # (depending on whether it's a list)
-            if value_is_list:
-                job_variables[variable] = []
-                for value in job_definition.tests[job_test_name].inputs[variable]:
-                    job_variables[variable].append(os.path.basename(value))
+                # Add each value or just one value
+                # (depending on whether it's a list)
+                if value_is_list:
+                    job_variables[variable] = []
+                    for value in job_definition.tests[job_test_name].inputs[variable]:
+                        job_variables[variable].append(os.path.basename(value))
+                        input_files.append(value)
+                else:
+                    value = job_definition.tests[job_test_name].inputs[variable]
+                    job_variables[variable] = os.path.basename(value)
                     input_files.append(value)
-            else:
-                value = job_definition.tests[job_test_name].inputs[variable]
-                job_variables[variable] = os.path.basename(value)
-                input_files.append(value)
 
         decoded_command: str = ""
         test_environment: Dict[str, str] = {}
@@ -593,7 +595,7 @@ def _test(
 
             print(f"> image={job_image}")
             print(f"> image-type={job_image_type}")
-            print(f'> command="{job_command}"')
+            print(f"> command={job_command}")
 
             # Create the project
             t_compose = Compose(
@@ -615,10 +617,10 @@ def _test(
             test_path: str = t_compose.get_test_path()
             print(f"# path={test_path}")
 
-            # Copy the data into the test's project directory.
-            # Data's expected to be found in the Job's 'inputs'.
-            print(f"input_files={input_files}")
-            test_status = _copy_inputs(input_files, project_path)
+            if input_files:
+                # Copy the data into the test's project directory.
+                # Data's expected to be found in the Job's 'inputs'.
+                test_status = _copy_inputs(input_files, project_path)
 
         # Run the container
         if test_status and not args.dry_run:
