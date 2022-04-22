@@ -26,7 +26,7 @@ from .compose import Compose
 # Where can we expect to find Job definitions?
 _DEFINITION_DIRECTORY: str = "data-manager"
 # What's the default manifest file?
-_DEFAULT_MANIFEST: str = "manifest.yaml"
+_DEFAULT_MANIFEST: str = os.path.join(_DEFINITION_DIRECTORY, "manifest.yaml")
 # Where can we expect to find test data?
 _DATA_DIRECTORY: str = "data"
 
@@ -613,9 +613,6 @@ def _test(
                 args.run_as_user,
             )
             project_path = t_compose.create()
-
-            test_path: str = t_compose.get_test_path()
-            print(f"# path={test_path}")
 
             if input_files:
                 # Copy the data into the test's project directory.
