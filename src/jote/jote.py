@@ -401,7 +401,11 @@ def _test(
     tests_ignored: int = 0
     tests_failed: int = 0
 
-    job_image: str = f"{job_definition.image.name}:{job_definition.image.tag}"
+    if args.image_tag:
+        print(f"W Replacing image tag. Using '{args.image_tag}'")
+        job_image: str = f"{job_definition.image.name}:{args.image_tag}"
+    else:
+        job_image = f"{job_definition.image.name}:{job_definition.image.tag}"
     job_image_memory: str = job_definition.image["memory"]
     if job_image_memory is None:
         job_image_memory = "1Gi"
@@ -762,6 +766,10 @@ def main() -> int:
         " is required. If not specified all the Jobs"
         " that match the collection will be"
         " candidates for testing.",
+    )
+    arg_parser.add_argument(
+        "--image-tag",
+        help="An image tag to use rather then the one defined in the job definition.",
     )
     arg_parser.add_argument(
         "-t",
