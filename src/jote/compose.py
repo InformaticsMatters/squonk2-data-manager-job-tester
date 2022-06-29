@@ -169,7 +169,7 @@ class Compose:
         additional_environment: str = ""
         if self._test_environment:
             for e_name, e_value in self._test_environment.items():
-                additional_environment += f"    - {e_name}='{e_value}'\n"
+                additional_environment += f"    - {e_name}={e_value}\n"
         variables: Dict[str, Any] = {
             "command": self._command,
             "test_path": project_path,
