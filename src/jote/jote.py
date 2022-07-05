@@ -518,26 +518,21 @@ def _test(
                     # Record but do no further processing
                     tests_failed += 1
                     test_status = False
-                # Is it declared as a list?
-                value_is_list: bool = False
-                if variable_is_option:
-                    if job_definition.variables.options.properties[variable].multiple:
-                        value_is_list = True
-                else:
-                    if job_definition.variables.inputs.properties[variable].multiple:
-                        value_is_list = True
 
-                # Add each value or just one value
-                # (depending on whether it's a list)
-                if value_is_list:
-                    job_variables[variable] = []
-                    for value in job_definition.tests[job_test_name].inputs[variable]:
-                        job_variables[variable].append(os.path.basename(value))
+                if variable_is_input:
+                    # Is it an input (not an option).
+                    # The input is a list if it's declared as 'multiple'
+                    if job_definition.variables.inputs.properties[variable].multiple:
+                        job_variables[variable] = []
+                        for value in job_definition.tests[job_test_name].inputs[
+                            variable
+                        ]:
+                            job_variables[variable].append(os.path.basename(value))
+                            input_files.append(value)
+                    else:
+                        value = job_definition.tests[job_test_name].inputs[variable]
+                        job_variables[variable] = os.path.basename(value)
                         input_files.append(value)
-                else:
-                    value = job_definition.tests[job_test_name].inputs[variable]
-                    job_variables[variable] = os.path.basename(value)
-                    input_files.append(value)
 
         decoded_command: str = ""
         test_environment: Dict[str, str] = {}
