@@ -20,7 +20,7 @@ setuptools.setup(
     version=os.environ.get("GITHUB_REF_SLUG", "1.0.0"),
     author="Alan Christie",
     author_email="achristie@informaticsmatters.com",
-    url="https://github.com/informaticsmatters/data-manager-job-tester",
+    url="https://github.com/informaticsmatters/squonk2-data-manager-job-tester",
     license="MIT",
     description="The IM Data Manager Job Tester (jote)",
     long_description=long_description,
