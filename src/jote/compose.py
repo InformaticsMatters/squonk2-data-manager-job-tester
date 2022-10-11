@@ -261,3 +261,47 @@ class Compose:
             shutil.rmtree(test_path)
 
         print("# Compose: Deleted")
+
+    @staticmethod
+    def run_group_compose_file(compose_file: str) -> bool:
+        """Runs a group compose file in a detached state.
+        The file is expected to be resident in the 'data-manager' directory."""
+        try:
+            # Bring the compose file up...
+            _ = subprocess.run(
+                [
+                    "docker-compose",
+                    "-f",
+                    os.path.join("data-manager", compose_file),
+                    "up",
+                    "-d",
+                ],
+                capture_output=False,
+                check=False,
+            )
+        except:  # pylint: disable=bare-except
+            return False
+
+        return True
+
+    @staticmethod
+    def stop_group_compose_file(compose_file: str) -> bool:
+        """Runs a group compose file in a detached state.
+        The file is expected to be ..."""
+        try:
+            # Bring the compose file down...
+            _ = subprocess.run(
+                [
+                    "docker-compose",
+                    "-f",
+                    os.path.join("data-manager", compose_file),
+                    "down",
+                ],
+                capture_output=False,
+                timeout=240,
+                check=False,
+            )
+        except:  # pylint: disable=bare-except
+            return False
+
+        return True

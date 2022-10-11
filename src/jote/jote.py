@@ -942,12 +942,22 @@ def _run_grouped_tests(
                 # an 'ordinal', 'job name', 'job test' and the 'job' definition
 
                 # Start the group compose file?
-                if index == 0 and "compose-file" in grouped_test[0]:
-                    compose_file = grouped_test[0]["compose-file"]
-                    print(
-                        f"Grouped Test =-> {jd_filename}:"
-                        f' compose-file="{compose_file}" [UP]'
+                if (
+                    index == 0
+                    and "compose-file" in grouped_test[0]
+                    and not args.dry_run
+                ):
+                    group_compose_file = grouped_test[0]["compose-file"]
+                    assert group_compose_file
+                    g_compose_result: bool = Compose.run_group_compose_file(
+                        group_compose_file
                     )
+                    if not g_compose_result:
+                        print("! FAILURE")
+                        print(
+                            f"! Test group compose file failed ({group_compose_file})"
+                        )
+                        break
 
                 # The test
                 compose, test_result = _run_a_test(
@@ -978,11 +988,8 @@ def _run_grouped_tests(
 
             # Always stop the group compose file at the end of the test group
             # (if there is one)
-            if group_compose_file:
-                print(
-                    f"Grouped Test =-> {jd_filename}:"
-                    f' compose-file="{group_compose_file}" [DOWN]'
-                )
+            if group_compose_file and not args.dry_run:
+                _ = Compose.stop_group_compose_file(group_compose_file)
 
             # Told to exit on first failure?
             if test_result == TestResult.FAILED and args.exit_on_failure:
