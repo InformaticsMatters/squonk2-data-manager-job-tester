@@ -52,7 +52,7 @@ _USR_HOME: str = os.environ.get("HOME", "")
 
 
 class TestResult(Enum):
-    """Return value from '_run_a-test()'"""
+    """Return value from '_run_a_test()'"""
 
     FAILED = 0
     PASSED = 1
@@ -149,6 +149,7 @@ def _check_cwd() -> bool:
 
 def _add_grouped_test(
     jd_filename: str,
+    job_collection: str,
     job_name: str,
     job: List[DefaultMunch],
     run_group_names: List[str],
@@ -178,7 +179,7 @@ def _add_grouped_test(
                 {
                     "test-group-name": run_group_name,
                     "test-group": test_group_definition,
-                    "jobs": [(job_name, job)],
+                    "jobs": [(job_collection, job_name, job)],
                 }
             ]
         else:
@@ -190,7 +191,9 @@ def _add_grouped_test(
                 # the group name, the group definition and the list of jobs.
                 if existing_file_run_groups["test-group-name"] == run_group_name:
                     # Another job for an existing test group
-                    existing_file_run_groups["jobs"].append((job_name, job))
+                    existing_file_run_groups["jobs"].append(
+                        (job_collection, job_name, job)
+                    )
                     found_test_group = True
             # Did we find an existing test group?
             if not found_test_group:
@@ -199,7 +202,7 @@ def _add_grouped_test(
                     {
                         "test-group-name": run_group_name,
                         "test-group": test_group_definition,
-                        "jobs": [(job_name, job)],
+                        "jobs": [(job_collection, job_name, job)],
                     }
                 )
 
@@ -271,6 +274,8 @@ def _load(
         if job_def:
             jd_munch: DefaultMunch = DefaultMunch.fromDict(job_def)
 
+            jd_collection: str = jd_munch["collection"]
+
             # Test groups defined in this file...
             test_groups: List[DefaultMunch] = []
             if "test-groups" in jd_munch:
@@ -314,6 +319,7 @@ def _load(
                     if test_run_group_names:
                         _add_grouped_test(
                             jd_path,
+                            jd_collection,
                             jd_name,
                             jd_munch.jobs[jd_name],
                             test_run_group_names,
@@ -854,6 +860,7 @@ def _run_grouped_tests(
     #
     # See '_add_grouped_test()', which is used by _load() to build the map.
 
+    test_result: Optional[TestResult] = None
     for jd_filename, grouped_tests in grouped_job_definitions.items():
 
         # The grouped definitions are indexed by JobDefinition filename
@@ -866,7 +873,7 @@ def _run_grouped_tests(
                 # and this isn't it, so skip these tests.
                 continue
             group_struct: Dict[str, Any] = file_run_group["test-group"]
-            jobs: List[Tuple[str, DefaultMunch]] = file_run_group["jobs"]
+            jobs: List[Tuple[str, str, DefaultMunch]] = file_run_group["jobs"]
 
             # We have a run-group structure (e.g.  a name and optional compose file)
             # and a list of jobs (job definitions), each with at least one test in
@@ -874,19 +881,21 @@ def _run_grouped_tests(
             # We need to collect: -
             #  0 - the name of the run-group,
             #  1 - the test ordinal
-            #  2 - the job name
-            #  3 - the job test name
-            #  4 - the job definition
+            #  2 - the job collection
+            #  3 - the job name
+            #  4 - the job test name
+            #  5 - the job definition
             # We'll sort after we've collected every test for this group.
             #
             # The job is a DefaultMunch and contains everything for that
             # job, including its tests.
             grouped_tests = []
             for job in jobs:
+                # the 'job' is a tuple of collection, job name and DefaultMunch.
                 # The Job will have a tests section.
-                for job_test_name in job[1].tests:
-                    if "run-groups" in job[1].tests[job_test_name]:
-                        for run_group in job[1].tests[job_test_name]["run-groups"]:
+                for job_test_name in job[2].tests:
+                    if "run-groups" in job[2].tests[job_test_name]:
+                        for run_group in job[2].tests[job_test_name]["run-groups"]:
                             if run_group.name == run_group_name:
                                 # OK - we have a test for this group.
                                 # Its ordinal must be unique!
@@ -911,9 +920,10 @@ def _run_grouped_tests(
                                     (
                                         group_struct,
                                         run_group.ordinal,
-                                        job[0],
+                                        job[0],  # Collection
+                                        job[1],  # Job (name)
                                         job_test_name,
-                                        job[1],
+                                        job[2],  # Job definition
                                     )
                                 )
 
@@ -925,7 +935,7 @@ def _run_grouped_tests(
             # 1. Apply the group compose file (if there is one)
             # 2. run the tests (in ordinal order)
             # 3. stop the compose file
-            compose_file: Optional[str] = None
+            group_compose_file: Optional[str] = None
             for index, grouped_test in enumerate(grouped_tests):
 
                 # For each grouped test we have a test-group definition,
@@ -940,17 +950,47 @@ def _run_grouped_tests(
                     )
 
                 # The test
-                print(
-                    f"Grouped Test =-> {jd_filename}/{grouped_test[0].name}[{grouped_test[1]}]:"
-                    f' job="{grouped_test[2]}" test="{grouped_test[3]}"'
+                compose, test_result = _run_a_test(
+                    args,
+                    jd_filename,
+                    grouped_test[2],
+                    grouped_test[3],
+                    grouped_test[4],
+                    grouped_test[5],
                 )
 
-            # Stop the group compose file?
-            if compose_file:
+                # Always try and teardown the test compose
+                # between tests in a group.
+                if compose:
+                    compose.delete()
+
+                # And stop if any test has failed.
+                if test_result == TestResult.FAILED:
+                    tests_failed += 1
+                    break
+
+                if test_result == TestResult.PASSED:
+                    tests_passed += 1
+                elif test_result == TestResult.SKIPPED:
+                    tests_skipped += 1
+                elif test_result == TestResult.IGNORED:
+                    tests_ignored += 1
+
+            # Always stop the group compose file at the end of the test group
+            # (if there is one)
+            if group_compose_file:
                 print(
                     f"Grouped Test =-> {jd_filename}:"
-                    f' compose-file="{compose_file}" [DOWN]'
+                    f' compose-file="{group_compose_file}" [DOWN]'
                 )
+
+            # Told to exit on first failure?
+            if test_result == TestResult.FAILED and args.exit_on_failure:
+                break
+
+        # Told to exit on first failure?
+        if test_result == TestResult.FAILED and args.exit_on_failure:
+            break
 
     return tests_passed, tests_skipped, tests_ignored, tests_failed
 
