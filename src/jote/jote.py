@@ -5,6 +5,7 @@
 Get help running this utility with 'jote --help'
 """
 import argparse
+from enum import Enum
 import os
 import shutil
 import stat
@@ -48,6 +49,15 @@ _DEFAULT_IMAGE_TYPE: str = _IMAGE_TYPE_SIMPLE
 # Used to check for netflow files if nextflow is executed.
 # The user CANNOT have any pf their own nextflow config.
 _USR_HOME: str = os.environ.get("HOME", "")
+
+
+class TestResult(Enum):
+    """Return value from '_run_a_test()'"""
+
+    FAILED = 0
+    PASSED = 1
+    SKIPPED = 2
+    IGNORED = 3
 
 
 def _print_test_banner(collection: str, job_name: str, job_test_name: str) -> None:
@@ -137,7 +147,69 @@ def _check_cwd() -> bool:
     return True
 
 
-def _load(manifest_filename: str, skip_lint: bool) -> Tuple[List[DefaultMunch], int]:
+def _add_grouped_test(
+    jd_filename: str,
+    job_collection: str,
+    job_name: str,
+    job: List[DefaultMunch],
+    run_group_names: List[str],
+    test_groups: List[DefaultMunch],
+    grouped_job_definitions: Dict[str, Any],
+) -> None:
+    """Adds a job definition to a test group for a job-definition file.
+
+    grouped_job_definitions is a map, indexed by JD filename.
+    It contains a list of dictionaries that are the set of group tests
+    """
+
+    for run_group_name in run_group_names:
+
+        # Find the test-group for this test
+        test_group_definition: Optional[DefaultMunch] = None
+        for test_group in test_groups:
+            if test_group.name == run_group_name:
+                test_group_definition = test_group
+                break
+        assert test_group_definition
+
+        # Does the file already exist in the definition?
+        if jd_filename not in grouped_job_definitions:
+            # First group of tests for this file
+            grouped_job_definitions[jd_filename] = [
+                {
+                    "test-group-name": run_group_name,
+                    "test-group": test_group_definition,
+                    "jobs": [(job_collection, job_name, job)],
+                }
+            ]
+        else:
+            # We already have some group definitions for this file.
+            # Is this a new test group or a job for an exitign test group?
+            found_test_group: bool = False
+            for existing_file_run_groups in grouped_job_definitions[jd_filename]:
+                # The value of the map is a dictionary containing
+                # the group name, the group definition and the list of jobs.
+                if existing_file_run_groups["test-group-name"] == run_group_name:
+                    # Another job for an existing test group
+                    existing_file_run_groups["jobs"].append(
+                        (job_collection, job_name, job)
+                    )
+                    found_test_group = True
+            # Did we find an existing test group?
+            if not found_test_group:
+                # First test for this group in the job definition file
+                grouped_job_definitions[jd_filename].append(
+                    {
+                        "test-group-name": run_group_name,
+                        "test-group": test_group_definition,
+                        "jobs": [(job_collection, job_name, job)],
+                    }
+                )
+
+
+def _load(
+    manifest_filename: str, skip_lint: bool
+) -> Tuple[List[DefaultMunch], Dict[str, Any], int]:
     """Loads definition files listed in the manifest
     and extracts the definitions that contain at least one test. The
     definition blocks for those that have tests (ignored or otherwise)
@@ -155,45 +227,107 @@ def _load(manifest_filename: str, skip_lint: bool) -> Tuple[List[DefaultMunch], 
     )
     if not os.path.isfile(manifest_path):
         print(f'! The manifest file is missing ("{manifest_path}")')
-        return [], -1
+        return [], {}, -1
 
     if not _validate_manifest_schema(manifest_path):
-        return [], -1
+        return [], {}, -1
 
     with open(manifest_path, "r", encoding="UTF-8") as manifest_file:
         manifest: Dict[str, Any] = yaml.load(manifest_file, Loader=yaml.FullLoader)
+    manifest_munch: Optional[DefaultMunch] = None
     if manifest:
-        manifest_munch: DefaultMunch = DefaultMunch.fromDict(manifest)
+        manifest_munch = DefaultMunch.fromDict(manifest)
+    assert manifest_munch
 
-    # Iterate through the named files...
+    # Iterate through the named files.
+    # 'job_definitions' are all those jobs that have at least one test that is not
+    # part of a 'run-group'. 'grouped_job_definitions' arr all the definitions that
+    # are part of a 'run-group', indexed by group name.
+    # the 'grouped_job_definitions' structure is:
+    #
+    # - <job-definition filename>
+    #   - <test group name>
+    #     <test compose file>
+    #     - <job-definition>
+    #
     job_definitions: List[DefaultMunch] = []
+    grouped_job_definitions: Dict[str, Any] = {}
     num_tests: int = 0
 
     for jd_filename in manifest_munch["job-definition-files"]:
 
-        # Does the definition comply with the dschema?
+        # Does the definition comply with the schema?
         # No options here - it must.
         jd_path: str = os.path.join(_DEFINITION_DIRECTORY, jd_filename)
         if not _validate_schema(jd_path):
-            return [], -1
+            return [], {}, -1
 
         # YAML-lint the definition?
         if not skip_lint:
             if not _lint(jd_path):
-                return [], -2
+                return [], {}, -2
 
+        # Load the Job definitions optionally compiling a set of 'run-groups'
         with open(jd_path, "r", encoding="UTF-8") as jd_file:
             job_def: Dict[str, Any] = yaml.load(jd_file, Loader=yaml.FullLoader)
+
         if job_def:
             jd_munch: DefaultMunch = DefaultMunch.fromDict(job_def)
-            for jd_name in jd_munch.jobs:
-                if jd_munch.jobs[jd_name].tests:
-                    num_tests += len(jd_munch.jobs[jd_name].tests)
-            if num_tests:
-                jd_munch.definition_filename = jd_filename
-                job_definitions.append(jd_munch)
 
-    return job_definitions, num_tests
+            jd_collection: str = jd_munch["collection"]
+
+            # Test groups defined in this file...
+            test_groups: List[DefaultMunch] = []
+            if "test-groups" in jd_munch:
+                for test_group in jd_munch["test-groups"]:
+                    test_groups.append(test_group)
+
+            # Process each job.
+            # It goes into 'job_definitions' if it has at least one non-grouped test,
+            # and into 'grouped_job_definitions' if it has at least one grouped test.
+            for jd_name in jd_munch.jobs:
+                test_run_group_names: List[str] = []
+                has_tests_without_groups: bool = False
+                if jd_munch.jobs[jd_name].tests:
+                    # Job has some tests
+                    num_tests += len(jd_munch.jobs[jd_name].tests)
+                    for job_test in jd_munch.jobs[jd_name].tests:
+                        # Is there a run-group defined for this test?
+                        if "run-groups" in jd_munch.jobs[jd_name].tests[job_test]:
+                            # Do the run-groups exists (in test-groups)
+                            for run_group in jd_munch.jobs[jd_name].tests[job_test][
+                                "run-groups"
+                            ]:
+                                group_exists: bool = False
+                                for test_group in test_groups:
+                                    if run_group.name == test_group.name:
+                                        group_exists = True
+                                        break
+                                if not group_exists:
+                                    print(
+                                        f'! Test "{job_test}" for Job "{jd_name}"'
+                                        f' refers to unknown run-group "{run_group.name}"'
+                                    )
+                                    return [], {}, -3
+                                test_run_group_names.append(run_group.name)
+                        else:
+                            has_tests_without_groups = True
+                    # A single job can have tests that are required to run in groups
+                    # and tests that can run without groups.
+                    if has_tests_without_groups:
+                        job_definitions.append(jd_munch.jobs[jd_name])
+                    if test_run_group_names:
+                        _add_grouped_test(
+                            jd_path,
+                            jd_collection,
+                            jd_name,
+                            jd_munch.jobs[jd_name],
+                            test_run_group_names,
+                            test_groups,
+                            grouped_job_definitions,
+                        )
+
+    return job_definitions, grouped_job_definitions, num_tests
 
 
 def _copy_inputs(test_inputs: List[str], project_path: str) -> bool:
@@ -341,13 +475,18 @@ def _check(
 
 
 def _run_nextflow(
-    command: str, project_path: str, timeout_minutes: int = DEFAULT_TEST_TIMEOUT_M
+    command: str,
+    project_path: str,
+    nextflow_config_file: str,
+    timeout_minutes: int = DEFAULT_TEST_TIMEOUT_M,
 ) -> Tuple[int, str, str]:
     """Runs nextflow in the project directory returning the exit code,
     stdout and stderr.
     """
     assert command
     assert project_path
+
+    print('# Executing the test ("nextflow")...')
 
     # The user cannot have a nextflow config in their home directory.
     # Nextflow looks here and any config will be merged with the test config.
@@ -362,7 +501,17 @@ def _run_nextflow(
             print("! You cannot test Jobs and have your own config file")
             return 1, "", ""
 
-    print('# Executing the test ("nextflow")...')
+    # Is there a Nextflow config file defined for this test?
+    # It's a file in the 'data-manager' directory.
+    if nextflow_config_file:
+        print(
+            f'# Copying nextflow config file ("{nextflow_config_file}") to {project_path}'
+        )
+        shutil.copyfile(
+            os.path.join("data-manager", nextflow_config_file),
+            os.path.join(project_path, "nextflow.config"),
+        )
+
     print(f'# Execution directory is "{project_path}"')
 
     cwd = os.getcwd()
@@ -382,24 +531,152 @@ def _run_nextflow(
     return test.returncode, test.stdout.decode("utf-8"), test.stderr.decode("utf-8")
 
 
-def _test(
+def _run_a_test(
     args: argparse.Namespace,
     filename: str,
     collection: str,
     job: str,
+    job_test_name: str,
     job_definition: DefaultMunch,
-) -> Tuple[int, int, int, int]:
-    """Runs the tests for a specific Job definition returning the number
-    of tests passed, skipped (due to run-level), ignored and failed.
-    """
-    assert job_definition
-    assert isinstance(job_definition, DefaultMunch)
+) -> Tuple[Optional[Compose], TestResult]:
+    """Runs a singe test."""
 
-    # The test status, assume success
-    tests_passed: int = 0
-    tests_skipped: int = 0
-    tests_ignored: int = 0
-    tests_failed: int = 0
+    _print_test_banner(collection, job, job_test_name)
+
+    # The status changes to False if any
+    # part of this block fails.
+    print(f"> definition filename={filename}")
+
+    # Does the test have an 'ignore' declaration?
+    # Obey it unless the test is named explicitly -
+    # i.e. if th user has named a specific test, run it.
+    if "ignore" in job_definition.tests[job_test_name]:
+        if args.test:
+            print("W Ignoring the ignore: property (told to run this test)")
+        else:
+            print('W Ignoring test (found "ignore")')
+            return None, TestResult.IGNORED
+
+    # Does the test have a 'run-level' declaration?
+    # If so, is it higher than the run-level specified?
+    if args.test:
+        print("W Ignoring any run-level check (told to run this test)")
+    else:
+        if "run-level" in job_definition.tests[job_test_name]:
+            run_level = job_definition.tests[job_test_name]["run-level"]
+            print(f"> run-level={run_level}")
+            if run_level > args.run_level:
+                print(f'W Skipping test (test is "run-level: {run_level}")')
+                return None, TestResult.SKIPPED
+        else:
+            print("> run-level=Undefined")
+
+    # Render the command for this test.
+
+    # First extract the variables and values from 'options'
+    # and then 'inputs'.
+    job_variables: Dict[str, Any] = {}
+    for variable in job_definition.tests[job_test_name].options:
+        job_variables[variable] = job_definition.tests[job_test_name].options[variable]
+
+    # If the option variable's declaration is 'multiple'
+    # it must be handled as a list, e.g. it might be declared like this: -
+    #
+    # The double-comment is used
+    # to avoid mypy getting upset by the 'type' line...
+    #
+    # #  properties:
+    # #    fragments:
+    # #      title: Fragment molecules
+    # #      multiple: true
+    # #      mime-types:
+    # #      - chemical/x-mdl-molfile
+    # #      type: file
+    #
+    # We only pass the basename of the input to the command decoding
+    # i.e. strip the source directory.
+
+    # A list of input files (relative to this directory)
+    # We populate this with everything we find declared as an input
+    input_files: List[str] = []
+
+    # Process every 'input'
+    if job_definition.tests[job_test_name].inputs:
+        for variable in job_definition.tests[job_test_name].inputs:
+            # Test variable must be known as an input or option.
+            # Is the variable an option (otherwise it's an input)
+            variable_is_option: bool = False
+            variable_is_input: bool = False
+            if variable in job_definition.variables.options.properties:
+                variable_is_option = True
+            elif variable in job_definition.variables.inputs.properties:
+                variable_is_input = True
+            if not variable_is_option and not variable_is_input:
+                print("! FAILURE")
+                print(
+                    f"! Test variable ({variable})" + " not declared as input or option"
+                )
+                # Record but do no further processing
+                return None, TestResult.FAILED
+
+            if variable_is_input:
+                # Is it an input (not an option).
+                # The input is a list if it's declared as 'multiple'
+                if job_definition.variables.inputs.properties[variable].multiple:
+                    job_variables[variable] = []
+                    for value in job_definition.tests[job_test_name].inputs[variable]:
+                        job_variables[variable].append(os.path.basename(value))
+                        input_files.append(value)
+                else:
+                    value = job_definition.tests[job_test_name].inputs[variable]
+                    job_variables[variable] = os.path.basename(value)
+                    input_files.append(value)
+
+    decoded_command: str = ""
+    test_environment: Dict[str, str] = {}
+
+    # Jote injects Job variables that are expected.
+    # 'DM_' variables are injected by the Data Manager,
+    # other are injected by Jote.
+    # - DM_INSTANCE_DIRECTORY
+    job_variables["DM_INSTANCE_DIRECTORY"] = INSTANCE_DIRECTORY
+    # - CODE_DIRECTORY
+    job_variables["CODE_DIRECTORY"] = os.getcwd()
+
+    # Has the user defined any environment variables in the test?
+    # If so they must exist, although we don't care about their value.
+    # Extract them here to pass to the test.
+    if "environment" in job_definition.tests[job_test_name]:
+        for env_name in job_definition.tests[job_test_name].environment:
+            env_value: Optional[str] = os.environ.get(env_name, None)
+            if env_value is None:
+                print("! FAILURE")
+                print("! Test environment variable is not defined")
+                print(f"! variable={env_name}")
+                # Record but do no further processing
+                return None, TestResult.FAILED
+            test_environment[env_name] = env_value
+
+    # Get the raw (encoded) command from the job definition...
+    raw_command: str = job_definition.command
+    # Decode it using our variables...
+    decoded_command, test_status = decoder.decode(
+        raw_command,
+        job_variables,
+        "command",
+        decoder.TextEncoding.JINJA2_3_0,
+    )
+    if not test_status:
+        print("! FAILURE")
+        print("! Failed to render command")
+        print(f"! error={decoded_command}")
+        # Record but do no further processing
+        return None, TestResult.FAILED
+
+    # The command must not contain new-lines.
+    # So split then join the command.
+    assert decoded_command
+    job_command: str = "".join(decoded_command.splitlines())
 
     if args.image_tag:
         print(f"W Replacing image tag. Using '{args.image_tag}'")
@@ -426,6 +703,118 @@ def _test(
     if "fix-permissions" in job_definition.image:
         job_image_fix_permissions = job_definition.image["fix-permissions"]
 
+    print(f"> image={job_image}")
+    print(f"> image-type={job_image_type}")
+    print(f"> command={job_command}")
+
+    # Create the project
+    t_compose: Compose = Compose(
+        collection,
+        job,
+        job_test_name,
+        job_image,
+        job_image_type,
+        job_image_memory,
+        job_image_cores,
+        job_project_directory,
+        job_working_directory,
+        job_command,
+        test_environment,
+        args.run_as_user,
+    )
+    project_path: str = t_compose.create()
+
+    if input_files:
+        # Copy the data into the test's project directory.
+        # Data's expected to be found in the Job's 'inputs'.
+        if not _copy_inputs(input_files, project_path):
+            return t_compose, TestResult.FAILED
+
+    # Run the container
+    if not args.dry_run:
+
+        timeout_minutes: int = DEFAULT_TEST_TIMEOUT_M
+        if "timeout-minutes" in job_definition.tests[job_test_name]:
+            timeout_minutes = job_definition.tests[job_test_name]["timeout-minutes"]
+
+        exit_code: int = 0
+        out: str = ""
+        err: str = ""
+        if job_image_type in [_IMAGE_TYPE_SIMPLE]:
+            # Run the image container
+            assert t_compose
+            exit_code, out, err = t_compose.run(timeout_minutes)
+        elif job_image_type in [_IMAGE_TYPE_NEXTFLOW]:
+            # Run nextflow directly
+            assert job_command
+            assert project_path
+
+            # Is there a nextflow config file for this test?
+            nextflow_config_file: str = ""
+            if "nextflow-config-file" in job_definition.tests[job_test_name]:
+                nextflow_config_file = job_definition.tests[job_test_name][
+                    "nextflow-config-file"
+                ]
+
+            exit_code, out, err = _run_nextflow(
+                job_command, project_path, nextflow_config_file, timeout_minutes
+            )
+        else:
+            print("! FAILURE")
+            print(f"! unsupported image-type ({job_image_type}")
+            return t_compose, TestResult.FAILED
+
+        expected_exit_code: int = job_definition.tests[job_test_name].checks.exitCode
+
+        if exit_code != expected_exit_code:
+            print("! FAILURE")
+            print(
+                f"! exit_code={exit_code}" f" expected_exit_code={expected_exit_code}"
+            )
+            print("! Test stdout follows...")
+            print(out)
+            print("! Test stderr follows...")
+            print(err)
+            return t_compose, TestResult.FAILED
+
+        if args.verbose:
+            print(out)
+
+    # Inspect the results
+    # (only if successful so far)
+    if not args.dry_run and job_definition.tests[job_test_name].checks.outputs:
+        assert t_compose
+        if not _check(
+            t_compose,
+            job_definition.tests[job_test_name].checks.outputs,
+            job_image_fix_permissions,
+        ):
+            return t_compose, TestResult.FAILED
+
+    # Success.
+    # If dry-run was set the test wasn't actually run.
+    return t_compose, TestResult.PASSED
+
+
+def _run_ungrouped_tests(
+    args: argparse.Namespace,
+    filename: str,
+    collection: str,
+    job: str,
+    job_definition: DefaultMunch,
+) -> Tuple[int, int, int, int]:
+    """Runs the tests for a specific Job definition returning the number
+    of tests passed, skipped (due to run-level), ignored and failed.
+    """
+    assert job_definition
+    assert isinstance(job_definition, DefaultMunch)
+
+    # The test status, assume success
+    tests_passed: int = 0
+    tests_skipped: int = 0
+    tests_ignored: int = 0
+    tests_failed: int = 0
+
     for job_test_name in job_definition.tests:
 
         # If a job test has been named,
@@ -434,265 +823,205 @@ def _test(
         if args.test and not args.test == job_test_name:
             continue
 
-        _print_test_banner(collection, job, job_test_name)
+        # If the test is part of a group then skip it.
+        # We only run ungrouped tests here.
+        if "run-groups" in job_definition.tests[job_test_name]:
+            continue
 
-        # The status changes to False if any
-        # part of this block fails.
-        test_status: bool = True
-        print(f"> definition filename={filename}")
+        # Now run the test...
+        compose, test_result = _run_a_test(
+            args,
+            filename,
+            collection,
+            job,
+            job_test_name,
+            job_definition,
+        )
 
-        # Does the test have an 'ignore' declaration?
-        # Obey it unless the test is named explicitly -
-        # i.e. if th user has named a specific test, run it.
-        if "ignore" in job_definition.tests[job_test_name]:
-            if args.test:
-                print("W Ignoring the ignore: property (told to run this test)")
-            else:
-                print('W Ignoring test (found "ignore")')
-                tests_ignored += 1
-                continue
-
-        # Does the test have a 'run-level' declaration?
-        # If so, is it higher than the run-level specified?
-        if args.test:
-            print("W Ignoring any run-level check (told to run this test)")
-        else:
-            if "run-level" in job_definition.tests[job_test_name]:
-                run_level = job_definition.tests[job_test_name]["run-level"]
-                print(f"> run-level={run_level}")
-                if run_level > args.run_level:
-                    print(f'W Skipping test (test is "run-level: {run_level}")')
-                    tests_skipped += 1
-                    continue
-            else:
-                print("> run-level=Undefined")
-
-        # Render the command for this test.
-
-        # First extract the variables and values from 'options'
-        # and then 'inputs'.
-        job_variables: Dict[str, Any] = {}
-        for variable in job_definition.tests[job_test_name].options:
-            job_variables[variable] = job_definition.tests[job_test_name].options[
-                variable
-            ]
-
-        # If the option variable's declaration is 'multiple'
-        # it must be handled as a list, e.g. it might be declared like this: -
-        #
-        # The double-comment is used
-        # to avoid mypy getting upset by the 'type' line...
-        #
-        # #  properties:
-        # #    fragments:
-        # #      title: Fragment molecules
-        # #      multiple: true
-        # #      mime-types:
-        # #      - chemical/x-mdl-molfile
-        # #      type: file
-        #
-        # We only pass the basename of the input to the command decoding
-        # i.e. strip the source directory.
-
-        # A list of input files (relative to this directory)
-        # We populate this with everything we find declared as an input
-        input_files: List[str] = []
-
-        # Process every 'input'
-        if job_definition.tests[job_test_name].inputs:
-            for variable in job_definition.tests[job_test_name].inputs:
-                # Test variable must be known as an input or option.
-                # Is the variable an option (otherwise it's an input)
-                variable_is_option: bool = False
-                variable_is_input: bool = False
-                if variable in job_definition.variables.options.properties:
-                    variable_is_option = True
-                elif variable in job_definition.variables.inputs.properties:
-                    variable_is_input = True
-                if not variable_is_option and not variable_is_input:
-                    print("! FAILURE")
-                    print(
-                        f"! Test variable ({variable})"
-                        + " not declared as input or option"
-                    )
-                    # Record but do no further processing
-                    tests_failed += 1
-                    test_status = False
-
-                if variable_is_input:
-                    # Is it an input (not an option).
-                    # The input is a list if it's declared as 'multiple'
-                    if job_definition.variables.inputs.properties[variable].multiple:
-                        job_variables[variable] = []
-                        for value in job_definition.tests[job_test_name].inputs[
-                            variable
-                        ]:
-                            job_variables[variable].append(os.path.basename(value))
-                            input_files.append(value)
-                    else:
-                        value = job_definition.tests[job_test_name].inputs[variable]
-                        job_variables[variable] = os.path.basename(value)
-                        input_files.append(value)
-
-        decoded_command: str = ""
-        test_environment: Dict[str, str] = {}
-        if test_status:
-
-            # Jote injects Job variables that are expected.
-            # 'DM_' variables are injected by the Data Manager,
-            # other are injected by Jote.
-            # - DM_INSTANCE_DIRECTORY
-            job_variables["DM_INSTANCE_DIRECTORY"] = INSTANCE_DIRECTORY
-            # - CODE_DIRECTORY
-            job_variables["CODE_DIRECTORY"] = os.getcwd()
-
-            # Has the user defined any environment variables in the test?
-            # If so they must exist, although we don't care about their value.
-            # Extract them here to pass to the test.
-            if "environment" in job_definition.tests[job_test_name]:
-                for env_name in job_definition.tests[job_test_name].environment:
-                    env_value: Optional[str] = os.environ.get(env_name, None)
-                    if env_value is None:
-                        print("! FAILURE")
-                        print("! Test environment variable is not defined")
-                        print(f"! variable={env_name}")
-                        # Record but do no further processing
-                        tests_failed += 1
-                        test_status = False
-                        break
-                    test_environment[env_name] = env_value
-
-            if test_status:
-                # Get the raw (encoded) command from the job definition...
-                raw_command: str = job_definition.command
-                # Decode it using our variables...
-                decoded_command, test_status = decoder.decode(
-                    raw_command,
-                    job_variables,
-                    "command",
-                    decoder.TextEncoding.JINJA2_3_0,
-                )
-                if not test_status:
-                    print("! FAILURE")
-                    print("! Failed to render command")
-                    print(f"! error={decoded_command}")
-                    # Record but do no further processing
-                    tests_failed += 1
-                    test_status = False
-
-        # Create the test directories, docker-compose file
-        # and copy inputs...
-        t_compose: Optional[Compose] = None
-        job_command: str = ""
-        project_path: str = ""
-        if test_status:
-
-            # The command must not contain new-lines.
-            # So split then join the command.
-            assert decoded_command
-            job_command = "".join(decoded_command.splitlines())
-
-            print(f"> image={job_image}")
-            print(f"> image-type={job_image_type}")
-            print(f"> command={job_command}")
-
-            # Create the project
-            t_compose = Compose(
-                collection,
-                job,
-                job_test_name,
-                job_image,
-                job_image_type,
-                job_image_memory,
-                job_image_cores,
-                job_project_directory,
-                job_working_directory,
-                job_command,
-                test_environment,
-                args.run_as_user,
-            )
-            project_path = t_compose.create()
-
-            if input_files:
-                # Copy the data into the test's project directory.
-                # Data's expected to be found in the Job's 'inputs'.
-                test_status = _copy_inputs(input_files, project_path)
-
-        # Run the container
-        if test_status and not args.dry_run:
-
-            timeout_minutes: int = DEFAULT_TEST_TIMEOUT_M
-            if "timeout-minutes" in job_definition.tests[job_test_name]:
-                timeout_minutes = job_definition.tests[job_test_name]["timeout-minutes"]
-
-            exit_code: int = 0
-            out: str = ""
-            err: str = ""
-            if job_image_type in [_IMAGE_TYPE_SIMPLE]:
-                # Run the image container
-                assert t_compose
-                exit_code, out, err = t_compose.run(timeout_minutes)
-            elif job_image_type in [_IMAGE_TYPE_NEXTFLOW]:
-                # Run nextflow directly
-                assert job_command
-                assert project_path
-                exit_code, out, err = _run_nextflow(
-                    job_command, project_path, timeout_minutes
-                )
-            else:
-                print("! FAILURE")
-                print(f"! unsupported image-type ({job_image_type}")
-                test_status = False
-
-            if test_status:
-                expected_exit_code: int = job_definition.tests[
-                    job_test_name
-                ].checks.exitCode
-
-                if exit_code != expected_exit_code:
-                    print("! FAILURE")
-                    print(
-                        f"! exit_code={exit_code}"
-                        f" expected_exit_code={expected_exit_code}"
-                    )
-                    print("! Test stdout follows...")
-                    print(out)
-                    print("! Test stderr follows...")
-                    print(err)
-                    test_status = False
-
-            if args.verbose:
-                print(out)
-
-        # Inspect the results
-        # (only if successful so far)
-        if (
-            test_status
-            and not args.dry_run
-            and job_definition.tests[job_test_name].checks.outputs
-        ):
-
-            assert t_compose
-            test_status = _check(
-                t_compose,
-                job_definition.tests[job_test_name].checks.outputs,
-                job_image_fix_permissions,
-            )
-
-        # Clean-up
-        if test_status and not args.keep_results:
-            assert t_compose
-            t_compose.delete()
+        # Clean-up?
+        if test_result == TestResult.PASSED and not args.keep_results:
+            assert compose
+            compose.delete()
 
         # Count?
-        if test_status:
+        if test_result == TestResult.PASSED:
             print("- SUCCESS")
             tests_passed += 1
-        else:
+        elif test_result == TestResult.FAILED:
             tests_failed += 1
 
         # Told to stop on first failure?
-        if not test_status and args.exit_on_failure:
+        if test_result == TestResult.FAILED and args.exit_on_failure:
+            break
+
+    return tests_passed, tests_skipped, tests_ignored, tests_failed
+
+
+def _run_grouped_tests(
+    args: argparse.Namespace,
+    grouped_job_definitions: Dict[str, Any],
+) -> Tuple[int, int, int, int]:
+    """Runs grouped tests.
+    Test provided indexed by job-definition file path.
+    Here we run all the tests that belong to a group without resetting
+    between the tests. At the end of each group we clean up.
+    """
+
+    # The test status, assume success
+    tests_passed: int = 0
+    tests_skipped: int = 0
+    tests_ignored: int = 0
+    tests_failed: int = 0
+
+    # 'grouped_job_definitions' is a dictionary indexed by
+    # the job-definition path and filename. For each entry there's a list
+    # that contains the 'group-name', the 'test-group' and a list of 'jobs'.
+    # 'test-group' is the test group from the original definition
+    # (i.e. having a name and optional compose-file) and 'jobs' is a list of job
+    # definitions (DefaultMunch stuff) for jobs that have at least one test
+    # that runs in that group.
+    #
+    # See '_add_grouped_test()', which is used by _load() to build the map.
+
+    test_result: Optional[TestResult] = None
+    for jd_filename, grouped_tests in grouped_job_definitions.items():
+
+        # The grouped definitions are indexed by JobDefinition filename
+        # and for each there is a list of dictionaries (indexed by group name).
+        for file_run_group in grouped_tests:
+
+            run_group_name: str = file_run_group["test-group-name"]
+            if args.run_group and run_group_name != args.run_group:
+                # A specific group has been named
+                # and this isn't it, so skip these tests.
+                continue
+            group_struct: Dict[str, Any] = file_run_group["test-group"]
+            jobs: List[Tuple[str, str, DefaultMunch]] = file_run_group["jobs"]
+
+            # We have a run-group structure (e.g.  a name and optional compose file)
+            # and a list of jobs (job definitions), each with at least one test in
+            # the group.
+            # We need to collect: -
+            #  0 - the name of the run-group,
+            #  1 - the test ordinal
+            #  2 - the job collection
+            #  3 - the job name
+            #  4 - the job test name
+            #  5 - the job definition
+            # We'll sort after we've collected every test for this group.
+            #
+            # The job is a DefaultMunch and contains everything for that
+            # job, including its tests.
+            grouped_tests = []
+            for job in jobs:
+                # the 'job' is a tuple of collection, job name and DefaultMunch.
+                # The Job will have a tests section.
+                for job_test_name in job[2].tests:
+                    if "run-groups" in job[2].tests[job_test_name]:
+                        for run_group in job[2].tests[job_test_name]["run-groups"]:
+                            if run_group.name == run_group_name:
+                                # OK - we have a test for this group.
+                                # Its ordinal must be unique!
+                                for existing_group_test in grouped_tests:
+                                    if run_group.ordinal == existing_group_test[1]:
+                                        # Oops - return a failure!
+                                        print("! FAILURE")
+                                        print(
+                                            f"! Test '{job_test_name}' ordinal"
+                                            f" {run_group.ordinal} is not unique"
+                                            f" within test group '{run_group.name}'"
+                                        )
+                                        tests_failed += 1
+                                        return (
+                                            tests_passed,
+                                            tests_skipped,
+                                            tests_ignored,
+                                            tests_failed,
+                                        )
+                                # New test in the group with a unique ordinal.
+                                grouped_tests.append(
+                                    (
+                                        group_struct,
+                                        run_group.ordinal,
+                                        job[0],  # Collection
+                                        job[1],  # Job (name)
+                                        job_test_name,
+                                        job[2],  # Job definition
+                                    )
+                                )
+
+            # We now have a set of grouped tests for a given test group in a file.
+            # Sort them according to 'ordinal' (the first entry of the tuple)
+            grouped_tests.sort(key=lambda tup: tup[1])
+
+            # Now run the tests in this group...
+            # 1. Apply the group compose file (if there is one)
+            # 2. run the tests (in ordinal order)
+            # 3. stop the compose file
+            group_compose_file: Optional[str] = None
+            for index, grouped_test in enumerate(grouped_tests):
+
+                # For each grouped test we have a test-group definition,
+                # an 'ordinal', 'job name', 'job test' and the 'job' definition
+
+                # Start the group compose file?
+                if index == 0 and "compose" in grouped_test[0] and not args.dry_run:
+                    group_compose_file = grouped_test[0].compose.file
+                    assert group_compose_file
+                    # Optional post-compose (up) delay?
+                    delay_seconds: int = 0
+                    if "delay-seconds" in grouped_test[0].compose:
+                        delay_seconds = grouped_test[0].compose["delay-seconds"]
+                    # Bring 'up' the group compose file...
+                    g_compose_result: bool = Compose.run_group_compose_file(
+                        group_compose_file,
+                        delay_seconds,
+                    )
+                    if not g_compose_result:
+                        print("! FAILURE")
+                        print(
+                            f"! Test group compose file failed ({group_compose_file})"
+                        )
+                        break
+
+                # The test
+                compose, test_result = _run_a_test(
+                    args,
+                    jd_filename,
+                    grouped_test[2],
+                    grouped_test[3],
+                    grouped_test[4],
+                    grouped_test[5],
+                )
+
+                # Always try and teardown the test compose
+                # between tests in a group.
+                if compose and not args.keep_results:
+                    compose.delete()
+
+                # And stop if any test has failed.
+                if test_result == TestResult.FAILED:
+                    tests_failed += 1
+                    break
+
+                if test_result == TestResult.PASSED:
+                    tests_passed += 1
+                elif test_result == TestResult.SKIPPED:
+                    tests_skipped += 1
+                elif test_result == TestResult.IGNORED:
+                    tests_ignored += 1
+
+            # Always stop the group compose file at the end of the test group
+            # (if there is one)
+            if group_compose_file and not args.dry_run:
+                _ = Compose.stop_group_compose_file(group_compose_file)
+
+            # Told to exit on first failure?
+            if test_result == TestResult.FAILED and args.exit_on_failure:
+                break
+
+        # Told to exit on first failure?
+        if test_result == TestResult.FAILED and args.exit_on_failure:
             break
 
     return tests_passed, tests_skipped, tests_ignored, tests_failed
@@ -782,6 +1111,13 @@ def main() -> int:
         " will be executed, a value from 1 to 100",
         default=1,
         type=arg_check_run_level,
+    )
+    arg_parser.add_argument(
+        "-g",
+        "--run-group",
+        help="The run-group of the tests you want to"
+        " execute. All tests that belong to the named group"
+        " will be executed",
     )
     arg_parser.add_argument(
         "-u",
@@ -876,6 +1212,12 @@ def main() -> int:
         arg_parser.error("--job requires --collection")
     if args.wipe and args.keep_results:
         arg_parser.error("Cannot use --wipe and --keep-results")
+    if args.run_group and args.collection:
+        arg_parser.error("Cannot use --run-groups and --collection")
+    if args.run_group and args.job:
+        arg_parser.error("Cannot use --run-groups and --job")
+    if args.run_group and args.test:
+        arg_parser.error("Cannot use --run-groups and --test")
 
     # Args are OK if we get here.
     total_passed_count: int = 0
@@ -899,7 +1241,9 @@ def main() -> int:
     print(f'# Using manifest "{args.manifest}"')
 
     # Load all the files we can and then run the tests.
-    job_definitions, num_tests = _load(args.manifest, args.skip_lint)
+    job_definitions, grouped_job_definitions, num_tests = _load(
+        args.manifest, args.skip_lint
+    )
     if num_tests < 0:
         print("! FAILURE")
         print("! Definition file has failed yamllint")
@@ -913,10 +1257,14 @@ def main() -> int:
         print(f'# Limiting to Job "{args.job}"')
     if args.test:
         print(f'# Limiting to Test "{args.test}"')
+    if args.run_group:
+        print(f'# Limiting to Run Group "{args.run_group}"')
 
-    if job_definitions:
-        # There is at least one job-definition with a test
-        # Now process all the Jobs that have tests...
+    # Run ungrouped tests (unless a test group has been named)
+    if not args.run_group and job_definitions:
+        # We've not been told to run a test group and have at least one job-definition
+        # that has a test that does not need a group.
+        # These tests can be run in any order.
         for job_definition in job_definitions:
             # If a collection's been named,
             # skip this file if it's not the named collection
@@ -931,7 +1279,12 @@ def main() -> int:
                     continue
 
                 if job_definition.jobs[job_name].tests:
-                    num_passed, num_skipped, num_ignored, num_failed = _test(
+                    (
+                        num_passed,
+                        num_skipped,
+                        num_ignored,
+                        num_failed,
+                    ) = _run_ungrouped_tests(
                         args,
                         job_definition.definition_filename,
                         collection,
@@ -950,6 +1303,18 @@ def main() -> int:
             # Break out of this loop if told to stop on failures
             if num_failed > 0 and args.exit_on_failure:
                 break
+
+    # Success so far.
+    # Run grouped tests?
+    if grouped_job_definitions:
+        num_passed, num_skipped, num_ignored, num_failed = _run_grouped_tests(
+            args,
+            grouped_job_definitions,
+        )
+        total_passed_count += num_passed
+        total_skipped_count += num_skipped
+        total_ignore_count += num_ignored
+        total_failed_count += num_failed
 
     # Success or failure?
     # It's an error to find no tests.
