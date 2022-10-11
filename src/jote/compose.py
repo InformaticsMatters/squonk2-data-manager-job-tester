@@ -270,10 +270,31 @@ class Compose:
         print("# Compose: Deleted")
 
     @staticmethod
-    def run_group_compose_file(compose_file: str) -> bool:
-        """Runs a group compose file in a detached state.
-        The file is expected to be resident in the 'data-manager' directory."""
+    def run_group_compose_file(compose_file: str, delay_seconds: int = 0) -> bool:
+        """Starts a group compose file in a detached state.
+        The file is expected to be a compose file in the 'data-manager' directory.
+        We pull the continer imag to reduce the 'docker-compose up' time
+        and then optionally wait for a period of seconds.
+        """
+
+        print("# Compose: Starting test group containers...")
+
+        # Runs a group compose file in a detached state.
+        # The file is expected to be resident in the 'data-manager' directory.
         try:
+            # Pre-pull the docker-compose images.
+            # This saves start-up execution time.
+            _ = subprocess.run(
+                [
+                    "docker-compose",
+                    "-f",
+                    os.path.join("data-manager", compose_file),
+                    "pull",
+                ],
+                capture_output=False,
+                check=False,
+            )
+
             # Bring the group-test compose file up.
             # By using '-p' ('--project-name')
             # we set the prefix for the network name and services from this container
@@ -295,16 +316,22 @@ class Compose:
         except:  # pylint: disable=bare-except
             return False
 
-        # Wait for 10 seconds.
-        # Giving the container
-        time.sleep(10)
+        # Wait for a period of seconds after launching?
+        if delay_seconds:
+            print(f"# Compose: Post-bring-up test group sleep ({delay_seconds})...")
+            time.sleep(delay_seconds)
 
+        print("# Compose: Started test group containers")
         return True
 
     @staticmethod
     def stop_group_compose_file(compose_file: str) -> bool:
-        """Runs a group compose file in a detached state.
-        The file is expected to be ..."""
+        """Stops a group compose file.
+        The file is expected to be a compose file in the 'data-manager' directory.
+        """
+
+        print("# Compose: Stopping test group containers...")
+
         try:
             # Bring the compose file down...
             _ = subprocess.run(
@@ -321,5 +348,7 @@ class Compose:
             )
         except:  # pylint: disable=bare-except
             return False
+
+        print("# Compose: Stopped test group containers")
 
         return True

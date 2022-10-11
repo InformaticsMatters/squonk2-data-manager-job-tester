@@ -965,15 +965,17 @@ def _run_grouped_tests(
                 # an 'ordinal', 'job name', 'job test' and the 'job' definition
 
                 # Start the group compose file?
-                if (
-                    index == 0
-                    and "compose-file" in grouped_test[0]
-                    and not args.dry_run
-                ):
-                    group_compose_file = grouped_test[0]["compose-file"]
+                if index == 0 and "compose" in grouped_test[0] and not args.dry_run:
+                    group_compose_file = grouped_test[0].compose.file
                     assert group_compose_file
+                    # Optional post-compose (up) delay?
+                    delay_seconds: int = 0
+                    if "delay-seconds" in grouped_test[0].compose:
+                        delay_seconds = grouped_test[0].compose["delay-seconds"]
+                    # Bring 'up' the group compose file...
                     g_compose_result: bool = Compose.run_group_compose_file(
-                        group_compose_file
+                        group_compose_file,
+                        delay_seconds,
                     )
                     if not g_compose_result:
                         print("! FAILURE")

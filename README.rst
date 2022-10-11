@@ -100,6 +100,12 @@ You can display the utility's help with::
 
     jote --help
 
+Jote container network
+----------------------
+
+``jote`` tests are executed on the network ``data-manager_jote``. This is
+defined in the docker-compose file that it generates to run your tests.
+
 Built-in variables
 ------------------
 
@@ -190,6 +196,81 @@ You should try and avoid creating too many long-running tests. If you cannot,
 consider whether it's a appropriate to use ``run-level`` to avoid ``jote``
 running them by default.
 
+Test groups
+-----------
+
+Tests are normally executed and the environment torn-down between them.
+If you have tests that depend on the results from a prior test you can run
+tests as a **group**, which preserves the project directory between the tests.
+
+To run a sequence of test (as a **group**) you need to define a ``test-group``
+in your Job Definition file and then refer to that group in your test. Here,
+we define a test group called ``experiment-a``, at the top of the
+definition file::
+
+    test-groups:
+    - name: experiment-a
+
+
+We then place a test in that group with a ``run-group`` declaration
+in the corresponding test block::
+
+    jobs:
+      job-a:
+        [...]
+        tests:
+          test-1:
+            run-groups:
+            - name: experiment-a
+              ordinal: 1
+
+We need to provide an ``ordinal`` value. This numeric value (from 1 ..N)
+puts the test in a specific position in the test sequence. When tests are
+placed in a ``run-group`` you have to order your tests so that ``a`` follows
+``b``. This is done with unique ordinals for each test in each group. A test
+with ordinal ``1`` will run before a test with ordinal ``2``.
+
+You can run just the tests for a specific group by using  the ``--run-group``
+option::
+
+    jote --run-group experiment-a
+
+Running additional containers (group testing)
+---------------------------------------------
+
+Test groups provide an ability to launch additional support containers during
+testing. You might want to start a background database for example, that can
+be used by tests in your ``test-group``. To take advantage of this feature
+you just need to provide a ``docker-compose`` file (in the Job definition
+``data-manager`` directory) and name that file in you r``test-groups``
+declaration.
+
+Here we declare a docker-compose file called
+``docker-compose-experiment-a.yaml``::
+
+     test-groups:
+    - name: experiment-a
+      compose:
+        file: docker-compose-experiment-a.yaml
+
+The compose filename must begin ``docker-compose`` and end ``.yaml``.
+
+The compose file is run before any tests in the corresponding test group
+have been run and will be stopped after the last test in the group.
+
+The compose file you provide is run in a *detached* state so ``jote`` does
+not wait for the containers to start (or initialise). As the first test
+in the test group can begin very soon after the compose file is started
+you can minimise the risk that your containers are not ready for the tests
+by adding a fixed delay between ``jote`` starting the compose file and
+running the first test::
+
+     test-groups:
+    - name: experiment-a
+      compose:
+        file: docker-compose-experiment-a.yaml
+        delay-seconds: 10
+
 Nextflow test execution
 -----------------------
 
@@ -208,7 +289,7 @@ constraints.
 
 When running nextflow jobs ``jote`` writes a ``nextflow.config`` to the
 test's simulated project directory prior to executing the command, and
-this is the curent-workign directory when the test starts.
+this is the current-working directory when the test starts.
 ``jote`` *will not* let you have a nextflow config in your home directory
 as any settings found there would be merged with the file ``jote`` writes,
 potentially disturbing the execution behaviour.
