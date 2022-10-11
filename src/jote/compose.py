@@ -31,8 +31,12 @@ _COMPOSE_CONTENT: str = """---
 # because we're relying on 'mem_limit' and 'cpus',
 # which are ignored (moved to swarm) in v3.
 version: '2.4'
+networks:
+  jote:
 services:
   job:
+    networks:
+    - jote
     image: {image}
     container_name: {job}-{test}-jote
     user: '{uid}:{gid}'

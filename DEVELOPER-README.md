@@ -31,6 +31,7 @@ to PyPI automatically from the main branch using GitHub Actions.
 
 To build the package distribution manually run: -
 
+    pip install --upgrade pip
     python -m pip install --upgrade build
     python -m build --sdist --wheel --outdir dist/
 

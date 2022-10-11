@@ -137,7 +137,66 @@ def _check_cwd() -> bool:
     return True
 
 
-def _load(manifest_filename: str, skip_lint: bool) -> Tuple[List[DefaultMunch], int]:
+def _add_grouped_test(
+    jd_filename: str,
+    job_name: str,
+    job: List[DefaultMunch],
+    run_group_names: List[str],
+    test_groups: List[DefaultMunch],
+    grouped_job_definitions: Dict[str, Any],
+) -> None:
+    """Adds a job definition to a test group for a job-definition file.
+
+    grouped_job_definitions is a map, indexed by JD filename.
+    It contains a list of dictionaries that are the set of group tests
+    """
+
+    for run_group_name in run_group_names:
+
+        # Find the test-group for this test
+        test_group_definition: Optional[DefaultMunch] = None
+        for test_group in test_groups:
+            if test_group.name == run_group_name:
+                test_group_definition = test_group
+                break
+        assert test_group_definition
+
+        # Does the file already exist in the definition?
+        if jd_filename not in grouped_job_definitions:
+            # First group of tests for this file
+            grouped_job_definitions[jd_filename] = [
+                {
+                    "test-group-name": run_group_name,
+                    "test-group": test_group_definition,
+                    "jobs": [(job_name, job)],
+                }
+            ]
+        else:
+            # We already have some group definitions for this file.
+            # Is this a new test group or a job for an exitign test group?
+            found_test_group: bool = False
+            for existing_file_run_groups in grouped_job_definitions[jd_filename]:
+                # The value of the map is a dictionary containing
+                # the group name, the group definition and the list of jobs.
+                if existing_file_run_groups["test-group-name"] == run_group_name:
+                    # Another job for an existing test group
+                    existing_file_run_groups["jobs"].append((job_name, job))
+                    found_test_group = True
+            # Did we find an existing test group?
+            if not found_test_group:
+                # First test for this group in the job definition file
+                grouped_job_definitions[jd_filename].append(
+                    {
+                        "test-group-name": run_group_name,
+                        "test-group": test_group_definition,
+                        "jobs": [(job_name, job)],
+                    }
+                )
+
+
+def _load(
+    manifest_filename: str, skip_lint: bool
+) -> Tuple[List[DefaultMunch], Dict[str, Any], int]:
     """Loads definition files listed in the manifest
     and extracts the definitions that contain at least one test. The
     definition blocks for those that have tests (ignored or otherwise)
@@ -155,45 +214,104 @@ def _load(manifest_filename: str, skip_lint: bool) -> Tuple[List[DefaultMunch], 
     )
     if not os.path.isfile(manifest_path):
         print(f'! The manifest file is missing ("{manifest_path}")')
-        return [], -1
+        return [], {}, -1
 
     if not _validate_manifest_schema(manifest_path):
-        return [], -1
+        return [], {}, -1
 
     with open(manifest_path, "r", encoding="UTF-8") as manifest_file:
         manifest: Dict[str, Any] = yaml.load(manifest_file, Loader=yaml.FullLoader)
+    manifest_munch: Optional[DefaultMunch] = None
     if manifest:
-        manifest_munch: DefaultMunch = DefaultMunch.fromDict(manifest)
+        manifest_munch = DefaultMunch.fromDict(manifest)
+    assert manifest_munch
 
-    # Iterate through the named files...
+    # Iterate through the named files.
+    # 'job_definitions' are all those jobs that have at least one test that is not
+    # part of a 'run-group'. 'grouped_job_definitions' arr all the definitions that
+    # are part of a 'run-group', indexed by group name.
+    # the 'grouped_job_definitions' structure is:
+    #
+    # - <job-definition filename>
+    #   - <test group name>
+    #     <test compose file>
+    #     - <job-definition>
+    #
     job_definitions: List[DefaultMunch] = []
+    grouped_job_definitions: Dict[str, Any] = {}
     num_tests: int = 0
 
     for jd_filename in manifest_munch["job-definition-files"]:
 
-        # Does the definition comply with the dschema?
+        # Does the definition comply with the schema?
         # No options here - it must.
         jd_path: str = os.path.join(_DEFINITION_DIRECTORY, jd_filename)
         if not _validate_schema(jd_path):
-            return [], -1
+            return [], {}, -1
 
         # YAML-lint the definition?
         if not skip_lint:
             if not _lint(jd_path):
-                return [], -2
+                return [], {}, -2
 
+        # Load the Job definitions optionally compiling a set of 'run-groups'
         with open(jd_path, "r", encoding="UTF-8") as jd_file:
             job_def: Dict[str, Any] = yaml.load(jd_file, Loader=yaml.FullLoader)
+
         if job_def:
             jd_munch: DefaultMunch = DefaultMunch.fromDict(job_def)
-            for jd_name in jd_munch.jobs:
-                if jd_munch.jobs[jd_name].tests:
-                    num_tests += len(jd_munch.jobs[jd_name].tests)
-            if num_tests:
-                jd_munch.definition_filename = jd_filename
-                job_definitions.append(jd_munch)
 
-    return job_definitions, num_tests
+            # Test groups defined in this file...
+            test_groups: List[DefaultMunch] = []
+            if "test-groups" in jd_munch:
+                for test_group in jd_munch["test-groups"]:
+                    test_groups.append(test_group)
+
+            # Process each job.
+            # It goes into 'job_definitions' if it has at least one non-grouped test,
+            # and into 'grouped_job_definitions' if it has at least one grouped test.
+            for jd_name in jd_munch.jobs:
+                test_run_group_names: List[str] = []
+                has_tests_without_groups: bool = False
+                if jd_munch.jobs[jd_name].tests:
+                    # Job has some tests
+                    num_tests += len(jd_munch.jobs[jd_name].tests)
+                    for job_test in jd_munch.jobs[jd_name].tests:
+                        # Is there a run-group defined for this test?
+                        if "run-groups" in jd_munch.jobs[jd_name].tests[job_test]:
+                            # Do the run-groups exists (in test-groups)
+                            for run_group in jd_munch.jobs[jd_name].tests[job_test][
+                                "run-groups"
+                            ]:
+                                group_exists: bool = False
+                                for test_group in test_groups:
+                                    if run_group.name == test_group.name:
+                                        group_exists = True
+                                        break
+                                if not group_exists:
+                                    print(
+                                        f'! Test "{job_test}" for Job "{jd_name}"'
+                                        f' refers to unknown run-group "{run_group.name}"'
+                                    )
+                                    return [], {}, -3
+                                test_run_group_names.append(run_group.name)
+                        else:
+                            has_tests_without_groups = True
+                    # A single job can have tests that are required to run in groups
+                    # and tests that can run without groups.
+                    if has_tests_without_groups:
+                        job_definitions.append(jd_munch.jobs[jd_name])
+                    if test_run_group_names:
+                        _add_grouped_test(
+                            jd_path,
+                            jd_name,
+                            jd_munch.jobs[jd_name],
+                            test_run_group_names,
+                            test_groups,
+                            grouped_job_definitions,
+                        )
+
+    return job_definitions, grouped_job_definitions, num_tests
 
 
 def _copy_inputs(test_inputs: List[str], project_path: str) -> bool:
@@ -382,7 +500,7 @@ def _run_nextflow(
     return test.returncode, test.stdout.decode("utf-8"), test.stderr.decode("utf-8")
 
 
-def _test(
+def _run_ungrouped_tests(
     args: argparse.Namespace,
     filename: str,
     collection: str,
@@ -432,6 +550,11 @@ def _test(
         # skip this test if it doesn't match.
         # We do not include this test in the count.
         if args.test and not args.test == job_test_name:
+            continue
+
+        # If the test is part of a group then skip it.
+        # We only run ungrouped tests here.
+        if "run-groups" in job_definition.tests[job_test_name]:
             continue
 
         _print_test_banner(collection, job, job_test_name)
@@ -698,6 +821,133 @@ def _test(
     return tests_passed, tests_skipped, tests_ignored, tests_failed
 
 
+def _run_grouped_tests(
+    args: argparse.Namespace,
+    grouped_job_definitions: Dict[str, Any],
+) -> Tuple[int, int, int, int]:
+    """Runs grouped tests.
+    Test provided indexed by job-definition file path.
+    Here we run all the tests that belong to a group without resetting
+    between the tests. At the end of each group we clean up.
+    """
+
+    # The test status, assume success
+    tests_passed: int = 0
+    tests_skipped: int = 0
+    tests_ignored: int = 0
+    tests_failed: int = 0
+
+    # 'grouped_job_definitions' is a dictionary indexed by
+    # the job-definition path and filename. For each entry there's a list
+    # that contains the 'group-name', the 'test-group' and a list of 'jobs'.
+    # 'test-group' is the test group from the original definition
+    # (i.e. having a name and optional compose-file) and 'jobs' is a list of job
+    # definitions (DefaultMunch stuff) for jobs that have at least one test
+    # that runs in that group.
+    #
+    # See '_add_grouped_test()', which is used by _load() to build the map.
+
+    for jd_filename, grouped_tests in grouped_job_definitions.items():
+
+        # The grouped definitions are indexed by JobDefinition filename
+        # and for each there is a list of dictionaries (indexed by group name).
+        for file_run_group in grouped_tests:
+
+            run_group_name: str = file_run_group["test-group-name"]
+            if args.run_group and run_group_name != args.run_group:
+                # A specific group has been named
+                # and this isn't it, so skip these tests.
+                continue
+            group_struct: Dict[str, Any] = file_run_group["test-group"]
+            jobs: List[Tuple[str, DefaultMunch]] = file_run_group["jobs"]
+
+            # We have a run-group structure (e.g.  a name and optional compose file)
+            # and a list of jobs (job definitions), each with at least one test in
+            # the group.
+            # We need to collect: -
+            #  0 - the name of the run-group,
+            #  1 - the test ordinal
+            #  2 - the job name
+            #  3 - the job test name
+            #  4 - the job definition
+            # We'll sort after we've collected every test for this group.
+            #
+            # The job is a DefaultMunch and contains everything for that
+            # job, including its tests.
+            grouped_tests = []
+            for job in jobs:
+                # The Job will have a tests section.
+                for job_test_name in job[1].tests:
+                    if "run-groups" in job[1].tests[job_test_name]:
+                        for run_group in job[1].tests[job_test_name]["run-groups"]:
+                            if run_group.name == run_group_name:
+                                # OK - we have a test for this group.
+                                # Its ordinal must be unique!
+                                for existing_group_test in grouped_tests:
+                                    if run_group.ordinal == existing_group_test[1]:
+                                        # Oops - return a failure!
+                                        print("! FAILURE")
+                                        print(
+                                            f"! Test '{job_test_name}' ordinal"
+                                            f" {run_group.ordinal} is not unique"
+                                            f" within test group '{run_group.name}'"
+                                        )
+                                        tests_failed += 1
+                                        return (
+                                            tests_passed,
+                                            tests_skipped,
+                                            tests_ignored,
+                                            tests_failed,
+                                        )
+                                # New test in the group with a unique ordinal.
+                                grouped_tests.append(
+                                    (
+                                        group_struct,
+                                        run_group.ordinal,
+                                        job[0],
+                                        job_test_name,
+                                        job[1],
+                                    )
+                                )
+
+            # We now have a set of grouped tests for a given test group in a file.
+            # Sort them according to 'ordinal' (the first entry of the tuple)
+            grouped_tests.sort(key=lambda tup: tup[1])
+
+            # Now run the tests in this group...
+            # 1. Apply the group compose file (if there is one)
+            # 2. run the tests (in ordinal order)
+            # 3. stop the compose file
+            compose_file: Optional[str] = None
+            for index, grouped_test in enumerate(grouped_tests):
+
+                # For each grouped test we have a test-group definition,
+                # an 'ordinal', 'job name', 'job test' and the 'job' definition
+
+                # Start the group compose file?
+                if index == 0 and "compose-file" in grouped_test[0]:
+                    compose_file = grouped_test[0]["compose-file"]
+                    print(
+                        f"Grouped Test =-> {jd_filename}:"
+                        f' compose-file="{compose_file}" [UP]'
+                    )
+
+                # The test
+                print(
+                    f"Grouped Test =-> {jd_filename}/{grouped_test[0].name}[{grouped_test[1]}]:"
+                    f' job="{grouped_test[2]}" test="{grouped_test[3]}"'
+                )
+
+            # Stop the group compose file?
+            if compose_file:
+                print(
+                    f"Grouped Test =-> {jd_filename}:"
+                    f' compose-file="{compose_file}" [DOWN]'
+                )
+
+    return tests_passed, tests_skipped, tests_ignored, tests_failed
+
+
 def _wipe() -> None:
     """Wipes the results of all tests."""
     test_root: str = get_test_root()
@@ -782,6 +1032,13 @@ def main() -> int:
         " will be executed, a value from 1 to 100",
         default=1,
         type=arg_check_run_level,
+    )
+    arg_parser.add_argument(
+        "-g",
+        "--run-group",
+        help="The run-group of the tests you want to"
+        " execute. All tests that belong to the named group"
+        " will be executed",
     )
     arg_parser.add_argument(
         "-u",
@@ -876,6 +1133,12 @@ def main() -> int:
         arg_parser.error("--job requires --collection")
     if args.wipe and args.keep_results:
         arg_parser.error("Cannot use --wipe and --keep-results")
+    if args.run_group and args.collection:
+        arg_parser.error("Cannot use --run-groups and --collection")
+    if args.run_group and args.job:
+        arg_parser.error("Cannot use --run-groups and --job")
+    if args.run_group and args.test:
+        arg_parser.error("Cannot use --run-groups and --test")
 
     # Args are OK if we get here.
     total_passed_count: int = 0
@@ -899,7 +1162,9 @@ def main() -> int:
     print(f'# Using manifest "{args.manifest}"')
 
     # Load all the files we can and then run the tests.
-    job_definitions, num_tests = _load(args.manifest, args.skip_lint)
+    job_definitions, grouped_job_definitions, num_tests = _load(
+        args.manifest, args.skip_lint
+    )
     if num_tests < 0:
         print("! FAILURE")
         print("! Definition file has failed yamllint")
@@ -913,10 +1178,14 @@ def main() -> int:
         print(f'# Limiting to Job "{args.job}"')
     if args.test:
         print(f'# Limiting to Test "{args.test}"')
+    if args.run_group:
+        print(f'# Limiting to Run Group "{args.run_group}"')
 
-    if job_definitions:
-        # There is at least one job-definition with a test
-        # Now process all the Jobs that have tests...
+    # Run ungrouped tests (unless a test group has been named)
+    if not args.run_group and job_definitions:
+        # We've not been told to run a test group and have at least one job-definition
+        # that has a test that does not need a group.
+        # These tests can be run in any order.
         for job_definition in job_definitions:
             # If a collection's been named,
             # skip this file if it's not the named collection
@@ -931,7 +1200,12 @@ def main() -> int:
                     continue
 
                 if job_definition.jobs[job_name].tests:
-                    num_passed, num_skipped, num_ignored, num_failed = _test(
+                    (
+                        num_passed,
+                        num_skipped,
+                        num_ignored,
+                        num_failed,
+                    ) = _run_ungrouped_tests(
                         args,
                         job_definition.definition_filename,
                         collection,
@@ -950,6 +1224,18 @@ def main() -> int:
             # Break out of this loop if told to stop on failures
             if num_failed > 0 and args.exit_on_failure:
                 break
+
+    # Success so far.
+    # Run grouped tests?
+    if grouped_job_definitions:
+        num_passed, num_skipped, num_ignored, num_failed = _run_grouped_tests(
+            args,
+            grouped_job_definitions,
+        )
+        total_passed_count += num_passed
+        total_skipped_count += num_skipped
+        total_ignore_count += num_ignored
+        total_failed_count += num_failed
 
     # Success or failure?
     # It's an error to find no tests.
