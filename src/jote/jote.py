@@ -5,6 +5,7 @@
 Get help running this utility with 'jote --help'
 """
 import argparse
+from enum import Enum
 import os
 import shutil
 import stat
@@ -48,6 +49,15 @@ _DEFAULT_IMAGE_TYPE: str = _IMAGE_TYPE_SIMPLE
 # Used to check for netflow files if nextflow is executed.
 # The user CANNOT have any pf their own nextflow config.
 _USR_HOME: str = os.environ.get("HOME", "")
+
+
+class TestResult(Enum):
+    """Return value from '_run_a-test()'"""
+
+    FAILED = 0
+    PASSED = 1
+    SKIPPED = 2
+    IGNORED = 3
 
 
 def _print_test_banner(collection: str, job_name: str, job_test_name: str) -> None:
@@ -500,24 +510,152 @@ def _run_nextflow(
     return test.returncode, test.stdout.decode("utf-8"), test.stderr.decode("utf-8")
 
 
-def _run_ungrouped_tests(
+def _run_a_test(
     args: argparse.Namespace,
     filename: str,
     collection: str,
     job: str,
+    job_test_name: str,
     job_definition: DefaultMunch,
-) -> Tuple[int, int, int, int]:
-    """Runs the tests for a specific Job definition returning the number
-    of tests passed, skipped (due to run-level), ignored and failed.
-    """
-    assert job_definition
-    assert isinstance(job_definition, DefaultMunch)
+) -> Tuple[Optional[Compose], TestResult]:
+    """Runs a singe test."""
 
-    # The test status, assume success
-    tests_passed: int = 0
-    tests_skipped: int = 0
-    tests_ignored: int = 0
-    tests_failed: int = 0
+    _print_test_banner(collection, job, job_test_name)
+
+    # The status changes to False if any
+    # part of this block fails.
+    print(f"> definition filename={filename}")
+
+    # Does the test have an 'ignore' declaration?
+    # Obey it unless the test is named explicitly -
+    # i.e. if th user has named a specific test, run it.
+    if "ignore" in job_definition.tests[job_test_name]:
+        if args.test:
+            print("W Ignoring the ignore: property (told to run this test)")
+        else:
+            print('W Ignoring test (found "ignore")')
+            return None, TestResult.IGNORED
+
+    # Does the test have a 'run-level' declaration?
+    # If so, is it higher than the run-level specified?
+    if args.test:
+        print("W Ignoring any run-level check (told to run this test)")
+    else:
+        if "run-level" in job_definition.tests[job_test_name]:
+            run_level = job_definition.tests[job_test_name]["run-level"]
+            print(f"> run-level={run_level}")
+            if run_level > args.run_level:
+                print(f'W Skipping test (test is "run-level: {run_level}")')
+                return None, TestResult.SKIPPED
+        else:
+            print("> run-level=Undefined")
+
+    # Render the command for this test.
+
+    # First extract the variables and values from 'options'
+    # and then 'inputs'.
+    job_variables: Dict[str, Any] = {}
+    for variable in job_definition.tests[job_test_name].options:
+        job_variables[variable] = job_definition.tests[job_test_name].options[variable]
+
+    # If the option variable's declaration is 'multiple'
+    # it must be handled as a list, e.g. it might be declared like this: -
+    #
+    # The double-comment is used
+    # to avoid mypy getting upset by the 'type' line...
+    #
+    # #  properties:
+    # #    fragments:
+    # #      title: Fragment molecules
+    # #      multiple: true
+    # #      mime-types:
+    # #      - chemical/x-mdl-molfile
+    # #      type: file
+    #
+    # We only pass the basename of the input to the command decoding
+    # i.e. strip the source directory.
+
+    # A list of input files (relative to this directory)
+    # We populate this with everything we find declared as an input
+    input_files: List[str] = []
+
+    # Process every 'input'
+    if job_definition.tests[job_test_name].inputs:
+        for variable in job_definition.tests[job_test_name].inputs:
+            # Test variable must be known as an input or option.
+            # Is the variable an option (otherwise it's an input)
+            variable_is_option: bool = False
+            variable_is_input: bool = False
+            if variable in job_definition.variables.options.properties:
+                variable_is_option = True
+            elif variable in job_definition.variables.inputs.properties:
+                variable_is_input = True
+            if not variable_is_option and not variable_is_input:
+                print("! FAILURE")
+                print(
+                    f"! Test variable ({variable})" + " not declared as input or option"
+                )
+                # Record but do no further processing
+                return None, TestResult.FAILED
+
+            if variable_is_input:
+                # Is it an input (not an option).
+                # The input is a list if it's declared as 'multiple'
+                if job_definition.variables.inputs.properties[variable].multiple:
+                    job_variables[variable] = []
+                    for value in job_definition.tests[job_test_name].inputs[variable]:
+                        job_variables[variable].append(os.path.basename(value))
+                        input_files.append(value)
+                else:
+                    value = job_definition.tests[job_test_name].inputs[variable]
+                    job_variables[variable] = os.path.basename(value)
+                    input_files.append(value)
+
+    decoded_command: str = ""
+    test_environment: Dict[str, str] = {}
+
+    # Jote injects Job variables that are expected.
+    # 'DM_' variables are injected by the Data Manager,
+    # other are injected by Jote.
+    # - DM_INSTANCE_DIRECTORY
+    job_variables["DM_INSTANCE_DIRECTORY"] = INSTANCE_DIRECTORY
+    # - CODE_DIRECTORY
+    job_variables["CODE_DIRECTORY"] = os.getcwd()
+
+    # Has the user defined any environment variables in the test?
+    # If so they must exist, although we don't care about their value.
+    # Extract them here to pass to the test.
+    if "environment" in job_definition.tests[job_test_name]:
+        for env_name in job_definition.tests[job_test_name].environment:
+            env_value: Optional[str] = os.environ.get(env_name, None)
+            if env_value is None:
+                print("! FAILURE")
+                print("! Test environment variable is not defined")
+                print(f"! variable={env_name}")
+                # Record but do no further processing
+                return None, TestResult.FAILED
+            test_environment[env_name] = env_value
+
+    # Get the raw (encoded) command from the job definition...
+    raw_command: str = job_definition.command
+    # Decode it using our variables...
+    decoded_command, test_status = decoder.decode(
+        raw_command,
+        job_variables,
+        "command",
+        decoder.TextEncoding.JINJA2_3_0,
+    )
+    if not test_status:
+        print("! FAILURE")
+        print("! Failed to render command")
+        print(f"! error={decoded_command}")
+        # Record but do no further processing
+        return None, TestResult.FAILED
+
+    # The command must not contain new-lines.
+    # So split then join the command.
+    assert decoded_command
+    job_command: str = "".join(decoded_command.splitlines())
 
     if args.image_tag:
         print(f"W Replacing image tag. Using '{args.image_tag}'")
@@ -544,6 +682,110 @@ def _run_ungrouped_tests(
     if "fix-permissions" in job_definition.image:
         job_image_fix_permissions = job_definition.image["fix-permissions"]
 
+    print(f"> image={job_image}")
+    print(f"> image-type={job_image_type}")
+    print(f"> command={job_command}")
+
+    # Create the project
+    t_compose: Compose = Compose(
+        collection,
+        job,
+        job_test_name,
+        job_image,
+        job_image_type,
+        job_image_memory,
+        job_image_cores,
+        job_project_directory,
+        job_working_directory,
+        job_command,
+        test_environment,
+        args.run_as_user,
+    )
+    project_path: str = t_compose.create()
+
+    if input_files:
+        # Copy the data into the test's project directory.
+        # Data's expected to be found in the Job's 'inputs'.
+        if not _copy_inputs(input_files, project_path):
+            return t_compose, TestResult.FAILED
+
+    # Run the container
+    if not args.dry_run:
+
+        timeout_minutes: int = DEFAULT_TEST_TIMEOUT_M
+        if "timeout-minutes" in job_definition.tests[job_test_name]:
+            timeout_minutes = job_definition.tests[job_test_name]["timeout-minutes"]
+
+        exit_code: int = 0
+        out: str = ""
+        err: str = ""
+        if job_image_type in [_IMAGE_TYPE_SIMPLE]:
+            # Run the image container
+            assert t_compose
+            exit_code, out, err = t_compose.run(timeout_minutes)
+        elif job_image_type in [_IMAGE_TYPE_NEXTFLOW]:
+            # Run nextflow directly
+            assert job_command
+            assert project_path
+            exit_code, out, err = _run_nextflow(
+                job_command, project_path, timeout_minutes
+            )
+        else:
+            print("! FAILURE")
+            print(f"! unsupported image-type ({job_image_type}")
+            return t_compose, TestResult.FAILED
+
+        expected_exit_code: int = job_definition.tests[job_test_name].checks.exitCode
+
+        if exit_code != expected_exit_code:
+            print("! FAILURE")
+            print(
+                f"! exit_code={exit_code}" f" expected_exit_code={expected_exit_code}"
+            )
+            print("! Test stdout follows...")
+            print(out)
+            print("! Test stderr follows...")
+            print(err)
+            return t_compose, TestResult.FAILED
+
+        if args.verbose:
+            print(out)
+
+    # Inspect the results
+    # (only if successful so far)
+    if not args.dry_run and job_definition.tests[job_test_name].checks.outputs:
+        assert t_compose
+        if not _check(
+            t_compose,
+            job_definition.tests[job_test_name].checks.outputs,
+            job_image_fix_permissions,
+        ):
+            return t_compose, TestResult.FAILED
+
+    # Success.
+    # If dry-run was set the test wasn't actually run.
+    return t_compose, TestResult.PASSED
+
+
+def _run_ungrouped_tests(
+    args: argparse.Namespace,
+    filename: str,
+    collection: str,
+    job: str,
+    job_definition: DefaultMunch,
+) -> Tuple[int, int, int, int]:
+    """Runs the tests for a specific Job definition returning the number
+    of tests passed, skipped (due to run-level), ignored and failed.
+    """
+    assert job_definition
+    assert isinstance(job_definition, DefaultMunch)
+
+    # The test status, assume success
+    tests_passed: int = 0
+    tests_skipped: int = 0
+    tests_ignored: int = 0
+    tests_failed: int = 0
+
     for job_test_name in job_definition.tests:
 
         # If a job test has been named,
@@ -557,265 +799,30 @@ def _run_ungrouped_tests(
         if "run-groups" in job_definition.tests[job_test_name]:
             continue
 
-        _print_test_banner(collection, job, job_test_name)
+        # Now run the test...
+        compose, test_result = _run_a_test(
+            args,
+            filename,
+            collection,
+            job,
+            job_test_name,
+            job_definition,
+        )
 
-        # The status changes to False if any
-        # part of this block fails.
-        test_status: bool = True
-        print(f"> definition filename={filename}")
-
-        # Does the test have an 'ignore' declaration?
-        # Obey it unless the test is named explicitly -
-        # i.e. if th user has named a specific test, run it.
-        if "ignore" in job_definition.tests[job_test_name]:
-            if args.test:
-                print("W Ignoring the ignore: property (told to run this test)")
-            else:
-                print('W Ignoring test (found "ignore")')
-                tests_ignored += 1
-                continue
-
-        # Does the test have a 'run-level' declaration?
-        # If so, is it higher than the run-level specified?
-        if args.test:
-            print("W Ignoring any run-level check (told to run this test)")
-        else:
-            if "run-level" in job_definition.tests[job_test_name]:
-                run_level = job_definition.tests[job_test_name]["run-level"]
-                print(f"> run-level={run_level}")
-                if run_level > args.run_level:
-                    print(f'W Skipping test (test is "run-level: {run_level}")')
-                    tests_skipped += 1
-                    continue
-            else:
-                print("> run-level=Undefined")
-
-        # Render the command for this test.
-
-        # First extract the variables and values from 'options'
-        # and then 'inputs'.
-        job_variables: Dict[str, Any] = {}
-        for variable in job_definition.tests[job_test_name].options:
-            job_variables[variable] = job_definition.tests[job_test_name].options[
-                variable
-            ]
-
-        # If the option variable's declaration is 'multiple'
-        # it must be handled as a list, e.g. it might be declared like this: -
-        #
-        # The double-comment is used
-        # to avoid mypy getting upset by the 'type' line...
-        #
-        # #  properties:
-        # #    fragments:
-        # #      title: Fragment molecules
-        # #      multiple: true
-        # #      mime-types:
-        # #      - chemical/x-mdl-molfile
-        # #      type: file
-        #
-        # We only pass the basename of the input to the command decoding
-        # i.e. strip the source directory.
-
-        # A list of input files (relative to this directory)
-        # We populate this with everything we find declared as an input
-        input_files: List[str] = []
-
-        # Process every 'input'
-        if job_definition.tests[job_test_name].inputs:
-            for variable in job_definition.tests[job_test_name].inputs:
-                # Test variable must be known as an input or option.
-                # Is the variable an option (otherwise it's an input)
-                variable_is_option: bool = False
-                variable_is_input: bool = False
-                if variable in job_definition.variables.options.properties:
-                    variable_is_option = True
-                elif variable in job_definition.variables.inputs.properties:
-                    variable_is_input = True
-                if not variable_is_option and not variable_is_input:
-                    print("! FAILURE")
-                    print(
-                        f"! Test variable ({variable})"
-                        + " not declared as input or option"
-                    )
-                    # Record but do no further processing
-                    tests_failed += 1
-                    test_status = False
-
-                if variable_is_input:
-                    # Is it an input (not an option).
-                    # The input is a list if it's declared as 'multiple'
-                    if job_definition.variables.inputs.properties[variable].multiple:
-                        job_variables[variable] = []
-                        for value in job_definition.tests[job_test_name].inputs[
-                            variable
-                        ]:
-                            job_variables[variable].append(os.path.basename(value))
-                            input_files.append(value)
-                    else:
-                        value = job_definition.tests[job_test_name].inputs[variable]
-                        job_variables[variable] = os.path.basename(value)
-                        input_files.append(value)
-
-        decoded_command: str = ""
-        test_environment: Dict[str, str] = {}
-        if test_status:
-
-            # Jote injects Job variables that are expected.
-            # 'DM_' variables are injected by the Data Manager,
-            # other are injected by Jote.
-            # - DM_INSTANCE_DIRECTORY
-            job_variables["DM_INSTANCE_DIRECTORY"] = INSTANCE_DIRECTORY
-            # - CODE_DIRECTORY
-            job_variables["CODE_DIRECTORY"] = os.getcwd()
-
-            # Has the user defined any environment variables in the test?
-            # If so they must exist, although we don't care about their value.
-            # Extract them here to pass to the test.
-            if "environment" in job_definition.tests[job_test_name]:
-                for env_name in job_definition.tests[job_test_name].environment:
-                    env_value: Optional[str] = os.environ.get(env_name, None)
-                    if env_value is None:
-                        print("! FAILURE")
-                        print("! Test environment variable is not defined")
-                        print(f"! variable={env_name}")
-                        # Record but do no further processing
-                        tests_failed += 1
-                        test_status = False
-                        break
-                    test_environment[env_name] = env_value
-
-            if test_status:
-                # Get the raw (encoded) command from the job definition...
-                raw_command: str = job_definition.command
-                # Decode it using our variables...
-                decoded_command, test_status = decoder.decode(
-                    raw_command,
-                    job_variables,
-                    "command",
-                    decoder.TextEncoding.JINJA2_3_0,
-                )
-                if not test_status:
-                    print("! FAILURE")
-                    print("! Failed to render command")
-                    print(f"! error={decoded_command}")
-                    # Record but do no further processing
-                    tests_failed += 1
-                    test_status = False
-
-        # Create the test directories, docker-compose file
-        # and copy inputs...
-        t_compose: Optional[Compose] = None
-        job_command: str = ""
-        project_path: str = ""
-        if test_status:
-
-            # The command must not contain new-lines.
-            # So split then join the command.
-            assert decoded_command
-            job_command = "".join(decoded_command.splitlines())
-
-            print(f"> image={job_image}")
-            print(f"> image-type={job_image_type}")
-            print(f"> command={job_command}")
-
-            # Create the project
-            t_compose = Compose(
-                collection,
-                job,
-                job_test_name,
-                job_image,
-                job_image_type,
-                job_image_memory,
-                job_image_cores,
-                job_project_directory,
-                job_working_directory,
-                job_command,
-                test_environment,
-                args.run_as_user,
-            )
-            project_path = t_compose.create()
-
-            if input_files:
-                # Copy the data into the test's project directory.
-                # Data's expected to be found in the Job's 'inputs'.
-                test_status = _copy_inputs(input_files, project_path)
-
-        # Run the container
-        if test_status and not args.dry_run:
-
-            timeout_minutes: int = DEFAULT_TEST_TIMEOUT_M
-            if "timeout-minutes" in job_definition.tests[job_test_name]:
-                timeout_minutes = job_definition.tests[job_test_name]["timeout-minutes"]
-
-            exit_code: int = 0
-            out: str = ""
-            err: str = ""
-            if job_image_type in [_IMAGE_TYPE_SIMPLE]:
-                # Run the image container
-                assert t_compose
-                exit_code, out, err = t_compose.run(timeout_minutes)
-            elif job_image_type in [_IMAGE_TYPE_NEXTFLOW]:
-                # Run nextflow directly
-                assert job_command
-                assert project_path
-                exit_code, out, err = _run_nextflow(
-                    job_command, project_path, timeout_minutes
-                )
-            else:
-                print("! FAILURE")
-                print(f"! unsupported image-type ({job_image_type}")
-                test_status = False
-
-            if test_status:
-                expected_exit_code: int = job_definition.tests[
-                    job_test_name
-                ].checks.exitCode
-
-                if exit_code != expected_exit_code:
-                    print("! FAILURE")
-                    print(
-                        f"! exit_code={exit_code}"
-                        f" expected_exit_code={expected_exit_code}"
-                    )
-                    print("! Test stdout follows...")
-                    print(out)
-                    print("! Test stderr follows...")
-                    print(err)
-                    test_status = False
-
-            if args.verbose:
-                print(out)
-
-        # Inspect the results
-        # (only if successful so far)
-        if (
-            test_status
-            and not args.dry_run
-            and job_definition.tests[job_test_name].checks.outputs
-        ):
-
-            assert t_compose
-            test_status = _check(
-                t_compose,
-                job_definition.tests[job_test_name].checks.outputs,
-                job_image_fix_permissions,
-            )
-
-        # Clean-up
-        if test_status and not args.keep_results:
-            assert t_compose
-            t_compose.delete()
+        # Clean-up?
+        if test_result == TestResult.PASSED and not args.keep_results:
+            assert compose
+            compose.delete()
 
         # Count?
-        if test_status:
+        if test_result == TestResult.PASSED:
             print("- SUCCESS")
             tests_passed += 1
-        else:
+        elif test_result == TestResult.FAILED:
             tests_failed += 1
 
         # Told to stop on first failure?
-        if not test_status and args.exit_on_failure:
+        if test_result == TestResult.FAILED and args.exit_on_failure:
             break
 
     return tests_passed, tests_skipped, tests_ignored, tests_failed
