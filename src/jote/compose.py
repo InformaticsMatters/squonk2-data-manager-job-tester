@@ -12,6 +12,7 @@ import copy
 import os
 import shutil
 import subprocess
+import time
 from typing import Any, Dict, Optional, Tuple
 
 # The 'simulated' instance directory,
@@ -226,10 +227,16 @@ class Compose:
 
         try:
             # Run the container
-            # and then cleanup
+            # and then cleanup.
+            # By using '-p' ('--project-name')
+            # we set the prefix for the network name and can use compose files
+            # from different directories. Without this the network name
+            # is prefixed by the directory the compose file is in.
             test = subprocess.run(
                 [
                     "docker-compose",
+                    "-p",
+                    "data-manager",
                     "up",
                     "--exit-code-from",
                     "job",
@@ -267,12 +274,18 @@ class Compose:
         """Runs a group compose file in a detached state.
         The file is expected to be resident in the 'data-manager' directory."""
         try:
-            # Bring the compose file up...
+            # Bring the group-test compose file up.
+            # By using '-p' ('--project-name')
+            # we set the prefix for the network name and services from this container
+            # are visible to the test container. Without this the network name
+            # is prefixed by the directory the compose file is in.
             _ = subprocess.run(
                 [
                     "docker-compose",
                     "-f",
                     os.path.join("data-manager", compose_file),
+                    "-p",
+                    "data-manager",
                     "up",
                     "-d",
                 ],
@@ -281,6 +294,10 @@ class Compose:
             )
         except:  # pylint: disable=bare-except
             return False
+
+        # Wait for 10 seconds.
+        # Giving the container
+        time.sleep(10)
 
         return True
 
@@ -296,6 +313,7 @@ class Compose:
                     "-f",
                     os.path.join("data-manager", compose_file),
                     "down",
+                    "--remove-orphans",
                 ],
                 capture_output=False,
                 timeout=240,

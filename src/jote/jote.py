@@ -475,13 +475,18 @@ def _check(
 
 
 def _run_nextflow(
-    command: str, project_path: str, timeout_minutes: int = DEFAULT_TEST_TIMEOUT_M
+    command: str,
+    project_path: str,
+    nextflow_config_file: str,
+    timeout_minutes: int = DEFAULT_TEST_TIMEOUT_M,
 ) -> Tuple[int, str, str]:
     """Runs nextflow in the project directory returning the exit code,
     stdout and stderr.
     """
     assert command
     assert project_path
+
+    print('# Executing the test ("nextflow")...')
 
     # The user cannot have a nextflow config in their home directory.
     # Nextflow looks here and any config will be merged with the test config.
@@ -496,7 +501,17 @@ def _run_nextflow(
             print("! You cannot test Jobs and have your own config file")
             return 1, "", ""
 
-    print('# Executing the test ("nextflow")...')
+    # Is there a Nextflow config file defined for this test?
+    # It's a file in the 'data-manager' directory.
+    if nextflow_config_file:
+        print(
+            f'# Copying nextflow config file ("{nextflow_config_file}") to {project_path}'
+        )
+        shutil.copyfile(
+            os.path.join("data-manager", nextflow_config_file),
+            os.path.join(project_path, "nextflow.config"),
+        )
+
     print(f'# Execution directory is "{project_path}"')
 
     cwd = os.getcwd()
@@ -733,8 +748,16 @@ def _run_a_test(
             # Run nextflow directly
             assert job_command
             assert project_path
+
+            # Is there a nextflow config file for this test?
+            nextflow_config_file: str = ""
+            if "nextflow-config-file" in job_definition.tests[job_test_name]:
+                nextflow_config_file = job_definition.tests[job_test_name][
+                    "nextflow-config-file"
+                ]
+
             exit_code, out, err = _run_nextflow(
-                job_command, project_path, timeout_minutes
+                job_command, project_path, nextflow_config_file, timeout_minutes
             )
         else:
             print("! FAILURE")
@@ -971,7 +994,7 @@ def _run_grouped_tests(
 
                 # Always try and teardown the test compose
                 # between tests in a group.
-                if compose:
+                if compose and not args.keep_results:
                     compose.delete()
 
                 # And stop if any test has failed.
