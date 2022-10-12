@@ -573,11 +573,13 @@ def _run_a_test(
 
     # Render the command for this test.
 
-    # First extract the variables and values from 'options'
-    # and then 'inputs'.
+    # First extract any variables and values from 'options' (if there are any).
     job_variables: Dict[str, Any] = {}
-    for variable in job_definition.tests[job_test_name].options:
-        job_variables[variable] = job_definition.tests[job_test_name].options[variable]
+    if job_definition.tests[job_test_name].options:
+        for variable in job_definition.tests[job_test_name].options:
+            job_variables[variable] = job_definition.tests[job_test_name].options[
+                variable
+            ]
 
     # If the option variable's declaration is 'multiple'
     # it must be handled as a list, e.g. it might be declared like this: -
