@@ -287,7 +287,6 @@ def _load(
             # and into 'grouped_job_definitions' if it has at least one grouped test.
             for jd_name in jd_munch.jobs:
                 test_run_group_names: List[str] = []
-                has_tests_without_groups: bool = False
                 if jd_munch.jobs[jd_name].tests:
                     # Job has some tests
                     num_tests += len(jd_munch.jobs[jd_name].tests)
@@ -310,12 +309,6 @@ def _load(
                                     )
                                     return [], {}, -3
                                 test_run_group_names.append(run_group.name)
-                        else:
-                            has_tests_without_groups = True
-                    # A single job can have tests that are required to run in groups
-                    # and tests that can run without groups.
-                    if has_tests_without_groups:
-                        job_definitions.append(jd_munch.jobs[jd_name])
                     if test_run_group_names:
                         _add_grouped_test(
                             jd_path,
@@ -326,6 +319,9 @@ def _load(
                             test_groups,
                             grouped_job_definitions,
                         )
+
+            # Job definitions is simply a copy of the whole decoded file.
+            job_definitions.append(jd_munch)
 
     return job_definitions, grouped_job_definitions, num_tests
 
@@ -1280,6 +1276,8 @@ def main() -> int:
                 if args.job and not args.job == job_name:
                     continue
 
+                # Skip any test that has a run-group defined.
+                # These will be handled sepratately.
                 if job_definition.jobs[job_name].tests:
                     (
                         num_passed,
@@ -1303,7 +1301,7 @@ def main() -> int:
                         break
 
             # Break out of this loop if told to stop on failures
-            if num_failed > 0 and args.exit_on_failure:
+            if total_failed_count > 0 and args.exit_on_failure:
                 break
 
     # Success so far.
