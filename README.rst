@@ -37,14 +37,14 @@ different name and have more than one.
     place to start. The repository is host to a number of job-based
     container images and several *manifests* and *job definition files*.
 
-Here's an example **manifest** from the **Virtual Screening** repository::
+Here's an example **manifest** from a recent **Virtual Screening** repository::
 
     ---
     kind: DataManagerManifest
     kind-version: '2021.1'
 
     job-definition-files:
-    - virtual-screening.yaml
+    - im-virtual-screening.yaml
     - rdkit.yaml
     - xchem.yaml
 
@@ -216,21 +216,22 @@ We then place a test in that group with a ``run-group`` declaration
 in the corresponding test block::
 
     jobs:
-      job-a:
+      max-min-picker:
         [...]
         tests:
-          test-1:
+          test-a:
             run-groups:
             - name: experiment-a
               ordinal: 1
 
 We need to provide an ``ordinal`` value. This numeric value (from 1 ..N)
 puts the test in a specific position in the test sequence. When tests are
-placed in a ``run-group`` you have to order your tests so that ``a`` follows
-``b``. This is done with unique ordinals for each test in each group. A test
-with ordinal ``1`` will run before a test with ordinal ``2``.
+placed in a ``run-group`` you have to order your tests, i.e. declare that
+``test-a`` follows ``test-b``. This is done with unique ordinals for each
+test in the ``run-group``. A test with ordinal ``1`` will run before a test
+with ordinal ``2``. Ordinals have to be unique within a ``run-group``.
 
-You can run just the tests for a specific group by using  the ``--run-group``
+You can run the tests for a specific group by using  the ``--run-group``
 option::
 
     jote --run-group experiment-a
@@ -248,7 +249,7 @@ declaration.
 Here we declare a docker-compose file called
 ``docker-compose-experiment-a.yaml``::
 
-     test-groups:
+    test-groups:
     - name: experiment-a
       compose:
         file: docker-compose-experiment-a.yaml
@@ -265,7 +266,7 @@ you can minimise the risk that your containers are not ready for the tests
 by adding a fixed delay between ``jote`` starting the compose file and
 running the first test::
 
-     test-groups:
+    test-groups:
     - name: experiment-a
       compose:
         file: docker-compose-experiment-a.yaml
@@ -281,23 +282,41 @@ using the shell, relying on Docker as the execution run-time for the processes
 in your workflow.
 
 Be aware that nextflow tests run by ``jote`` run under different conditions
-compared to when it runs under the Data Manager's control, where nextflow
-will be executed within a Kubernetes environment rather than Docker. This
-introduces variability. Nextflow tests that run under ``jote`` *are not*
-executed in the same environment or under the same memory or processor
-constraints.
+compared to when it runs under the Data Manager's control. In the Data Manager
+nextflow jobs will be executed within a Kubernetes environment. When run by ``jote``
+nextflow is expected using the operating system shell. This introduces a
+variability that you need to take into account - i.e. under ``jote`` the
+nextflow controller runs in the shell, and *are not* executed in the same
+environment or under the same memory or processor constraints.
 
-When running nextflow jobs ``jote`` writes a ``nextflow.config`` to the
-test's simulated project directory prior to executing the command, and
-this is the current-working directory when the test starts.
+You might need to provide a custom nextflow configuration file
+for your tests to run successfully. You do this by adding a ``nextflow-config-file``
+declaration in the test. Here, we name the file ``nextflow-test.config``::
+
+    jobs:
+      max-min-picker:
+        [...]
+        tests:
+          simple-load:
+            nextflow-config-file: nextflow-test.config
+            [...]
+
+The config file must be located in the Job repository's ``data-manager``
+directory.
+
+Prior to running the corresponding test ``jote`` copies it to the
+Job's project directory as the file ``nextflow.config`` (a standard file
+expected by nextflow).
+
 ``jote`` *will not* let you have a nextflow config in your home directory
 as any settings found there would be merged with the file ``jote`` writes,
 potentially disturbing the execution behaviour.
 
-    It's your responsibility to install a suitable nextflow that's available
-    for shell execution when you test any nextflow-type Jobs. ``jote`` expects
-    to be able to run nextflow when executing the corresponding ``command``
-    that's defined in the job definition.
+.. note::
+   It's your responsibility to install a suitable nextflow that's available
+   for shell execution. ``jote`` expects to be able to run nextflow when
+   executing the corresponding ``command`` that's defined in the job
+   definition.
 
 Installation
 ============
