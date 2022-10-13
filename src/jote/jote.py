@@ -534,8 +534,12 @@ def _run_a_test(
     job: str,
     job_test_name: str,
     job_definition: DefaultMunch,
+    test_group: str = "",
+    test_group_ordinal: int = 0,
 ) -> Tuple[Optional[Compose], TestResult]:
-    """Runs a singe test."""
+    """Runs a singe test printing a test group and non-zero optional ordinal,
+    which is used for group test runs. If a test group is provided a valid ordinal
+    (1..N) must also be used."""
 
     _print_test_banner(collection, job, job_test_name)
 
@@ -566,6 +570,11 @@ def _run_a_test(
                 return None, TestResult.SKIPPED
         else:
             print("> run-level=Undefined")
+
+    # Was a test group ordinal provided?
+    if test_group:
+        assert test_group_ordinal > 0
+        print(f"> test-group={test_group} ordinal={test_group_ordinal}")
 
     # Render the command for this test.
 
@@ -898,14 +907,14 @@ def _run_grouped_tests(
 
             # We have a run-group structure (e.g.  a name and optional compose file)
             # and a list of jobs (job definitions), each with at least one test in
-            # the group.
-            # We need to collect: -
+            # the group. We collect the following into a 'grouped_tests' list: -
             #  0 - the name of the run-group,
             #  1 - the test ordinal
             #  2 - the job collection
             #  3 - the job name
             #  4 - the job test name
             #  5 - the job definition
+            #
             # We'll sort after we've collected every test for this group.
             #
             # The job is a DefaultMunch and contains everything for that
@@ -919,10 +928,28 @@ def _run_grouped_tests(
                         for run_group in job[2].tests[job_test_name]["run-groups"]:
                             if run_group.name == run_group_name:
                                 # OK - we have a test for this group.
-                                # Its ordinal must be unique!
+                                # Assume we've not seen his before...
+                                new_test: bool = True
                                 for existing_group_test in grouped_tests:
-                                    if run_group.ordinal == existing_group_test[1]:
-                                        # Oops - return a failure!
+                                    # Have we seen this before?
+                                    # If not the ordinal cannot exist in a different
+                                    # collection or job.
+                                    if (
+                                        existing_group_test[2] == job[0]
+                                        and existing_group_test[3] == job[1]
+                                        and existing_group_test[4] == job_test_name
+                                    ):
+
+                                        new_test = False
+                                        break
+
+                                    if run_group.ordinal == existing_group_test[1] and (
+                                        existing_group_test[2] != job[0]
+                                        or existing_group_test[3] != job[1]
+                                    ):
+
+                                        # Oops - ordinal used elsewhere in this group.
+                                        # Return a failure!
                                         print("! FAILURE")
                                         print(
                                             f"! Test '{job_test_name}' ordinal"
@@ -936,17 +963,19 @@ def _run_grouped_tests(
                                             tests_ignored,
                                             tests_failed,
                                         )
-                                # New test in the group with a unique ordinal.
-                                grouped_tests.append(
-                                    (
-                                        group_struct,
-                                        run_group.ordinal,
-                                        job[0],  # Collection
-                                        job[1],  # Job (name)
-                                        job_test_name,
-                                        job[2],  # Job definition
+
+                                if new_test:
+                                    # New test in the group with a unique ordinal.
+                                    grouped_tests.append(
+                                        (
+                                            group_struct,
+                                            run_group.ordinal,
+                                            job[0],  # Collection
+                                            job[1],  # Job (name)
+                                            job_test_name,
+                                            job[2],  # Job definition
+                                        )
                                     )
-                                )
 
             # We now have a set of grouped tests for a given test group in a file.
             # Sort them according to 'ordinal' (the first entry of the tuple)
@@ -986,10 +1015,12 @@ def _run_grouped_tests(
                 compose, test_result = _run_a_test(
                     args,
                     jd_filename,
-                    grouped_test[2],
-                    grouped_test[3],
-                    grouped_test[4],
-                    grouped_test[5],
+                    grouped_test[2],  # Collection
+                    grouped_test[3],  # Job name
+                    grouped_test[4],  # Test name
+                    grouped_test[5],  # The job definition
+                    run_group_name,
+                    grouped_test[1],  # Ordinal
                 )
 
                 # Always try and teardown the test compose
