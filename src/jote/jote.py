@@ -241,7 +241,7 @@ def _load(
 
     # Iterate through the named files.
     # 'job_definitions' are all those jobs that have at least one test that is not
-    # part of a 'run-group'. 'grouped_job_definitions' arr all the definitions that
+    # part of a 'run-group'. 'grouped_job_definitions' are all the definitions that
     # are part of a 'run-group', indexed by group name.
     # the 'grouped_job_definitions' structure is:
     #
@@ -536,6 +536,7 @@ def _run_a_test(
     job_definition: DefaultMunch,
     test_group: str = "",
     test_group_ordinal: int = 0,
+    test_group_environment: Optional[Dict[str, Any]] = None,
 ) -> Tuple[Optional[Compose], TestResult]:
     """Runs a singe test printing a test group and non-zero optional ordinal,
     which is used for group test runs. If a test group is provided a valid ordinal
@@ -655,13 +656,19 @@ def _run_a_test(
     # Extract them here to pass to the test.
     if "environment" in job_definition.tests[job_test_name]:
         for env_name in job_definition.tests[job_test_name].environment:
-            env_value: Optional[str] = os.environ.get(env_name, None)
-            if env_value is None:
-                print("! FAILURE")
-                print("! Test environment variable is not defined")
-                print(f"! variable={env_name}")
-                # Record but do no further processing
-                return None, TestResult.FAILED
+            if test_group_environment and env_name in test_group_environment:
+                # The environment variable is provided by the test group,
+                # we don't need to go to the OS, we'll use what's provided.
+                env_value: Optional[str] = str(test_group_environment[env_name])
+            else:
+                env_value = os.environ.get(env_name, None)
+                if env_value is None:
+                    print("! FAILURE")
+                    print("! Test environment variable is not defined")
+                    print(f"! variable={env_name}")
+                    # Record but do no further processing
+                    return None, TestResult.FAILED
+            assert env_value
             test_environment[env_name] = env_value
 
     # Get the raw (encoded) command from the job definition...
@@ -884,9 +891,9 @@ def _run_grouped_tests(
     # the job-definition path and filename. For each entry there's a list
     # that contains the 'group-name', the 'test-group' and a list of 'jobs'.
     # 'test-group' is the test group from the original definition
-    # (i.e. having a name and optional compose-file) and 'jobs' is a list of job
-    # definitions (DefaultMunch stuff) for jobs that have at least one test
-    # that runs in that group.
+    # (i.e. having a name, optional compose-file, and optional environment)
+    # and 'jobs' is a list of job definitions (DefaultMunch stuff) for jobs
+    # that have at least one test that runs in that group.
     #
     # See '_add_grouped_test()', which is used by _load() to build the map.
 
@@ -988,8 +995,9 @@ def _run_grouped_tests(
             group_compose_file: Optional[str] = None
             for index, grouped_test in enumerate(grouped_tests):
 
-                # For each grouped test we have a test-group definition,
-                # an 'ordinal', 'job name', 'job test' and the 'job' definition
+                # For each grouped test we have a test-group definition [at index 0],
+                # an 'ordinal' [1], 'collection' [2], 'job name' [3], 'job test' [4]
+                # and the 'job' definition [5]
 
                 # Start the group compose file?
                 if index == 0 and "compose" in grouped_test[0] and not args.dry_run:
@@ -1011,6 +1019,14 @@ def _run_grouped_tests(
                         )
                         break
 
+                # Does the test group define an environment?
+                test_group_environment: Dict[str, Any] = {}
+                if grouped_test[0].environment:
+                    for gt_env in grouped_test[0].environment:
+                        key: str = list(gt_env.keys())[0]
+                        value: str = str(gt_env[key])
+                        test_group_environment[key] = value
+
                 # The test
                 compose, test_result = _run_a_test(
                     args,
@@ -1021,6 +1037,7 @@ def _run_grouped_tests(
                     grouped_test[5],  # The job definition
                     run_group_name,
                     grouped_test[1],  # Ordinal
+                    test_group_environment=test_group_environment,
                 )
 
                 # Always try and teardown the test compose

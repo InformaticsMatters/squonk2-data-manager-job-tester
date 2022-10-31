@@ -226,8 +226,14 @@ class Compose:
         os.chdir(execution_directory)
 
         try:
-            # Run the container
-            # and then cleanup.
+            # Run the container, and then cleanup.
+            # If a test environment is set then we pass in these values to the
+            # process as we run it - but it also needs to have a copy of the
+            # exiting environment.
+            env: Optional[Dict[str, Any]] = None
+            if self._test_environment:
+                env = os.environ.copy()
+                env.update(self._test_environment)
             # By using '-p' ('--project-name')
             # we set the prefix for the network name and can use compose files
             # from different directories. Without this the network name
@@ -245,6 +251,7 @@ class Compose:
                 capture_output=True,
                 timeout=timeout_minutes * 60,
                 check=False,
+                env=env,
             )
             _ = subprocess.run(
                 ["docker-compose", "down"],
