@@ -471,9 +471,11 @@ def _check(
 
 
 def _run_nextflow(
+    *,
     command: str,
     project_path: str,
     nextflow_config_file: str,
+    test_environment: Optional[Dict[str, str]] = None,
     timeout_minutes: int = DEFAULT_TEST_TIMEOUT_M,
 ) -> Tuple[int, str, str]:
     """Runs nextflow in the project directory returning the exit code,
@@ -513,6 +515,14 @@ def _run_nextflow(
     cwd = os.getcwd()
     os.chdir(project_path)
 
+    # Inject an environment?
+    # Yes if some variables are provided.
+    # We copy the exiting env and add those provided.
+    env: Optional[Dict[str, Any]] = None
+    if test_environment:
+        env = os.environ.copy()
+        env.update(test_environment)
+
     try:
         test = subprocess.run(
             command,
@@ -520,6 +530,7 @@ def _run_nextflow(
             check=False,
             capture_output=True,
             timeout=timeout_minutes * 60,
+            env=env,
         )
     finally:
         os.chdir(cwd)
@@ -771,7 +782,11 @@ def _run_a_test(
                 ]
 
             exit_code, out, err = _run_nextflow(
-                job_command, project_path, nextflow_config_file, timeout_minutes
+                command=job_command,
+                project_path=project_path,
+                nextflow_config_file=nextflow_config_file,
+                test_environment=test_environment,
+                timeout_minutes=timeout_minutes,
             )
         else:
             print("! FAILURE")

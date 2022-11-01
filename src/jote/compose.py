@@ -234,7 +234,6 @@ class Compose:
             if self._test_environment:
                 env = os.environ.copy()
                 env.update(self._test_environment)
-            print(f"# Compose: env={env}")
 
             # By using '-p' ('--project-name')
             # we set the prefix for the network name and can use compose files
