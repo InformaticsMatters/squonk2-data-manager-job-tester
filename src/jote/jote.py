@@ -50,6 +50,11 @@ _DEFAULT_IMAGE_TYPE: str = _IMAGE_TYPE_SIMPLE
 # The user CANNOT have any pf their own nextflow config.
 _USR_HOME: str = os.environ.get("HOME", "")
 
+# A string that has some sort of input prefix
+# e.g. "file://". This is what we expect to find in a test-input string that
+# has such a prefix.
+_TEST_INPUT_URL_MARKER: str = "://"
+
 
 class TestResult(Enum):
     """Return value from '_run_a_test()'"""
@@ -90,6 +95,17 @@ def _lint(definition_filename: str) -> bool:
             return False
 
     return True
+
+
+def _get_test_input_url_prefix(test_input_string: str) -> Optional[str]:
+    """Gets the string's file prefix (e.g. "file://") from what's expected to be
+    a test input string or None if there isn't one. If the prefix is "file://"
+    this function returns "file://".
+    """
+    prefix_index = test_input_string.find(_TEST_INPUT_URL_MARKER)
+    if prefix_index >= 0:
+        return test_input_string[:prefix_index] + _TEST_INPUT_URL_MARKER
+    return None
 
 
 def _validate_schema(definition_filename: str) -> bool:
@@ -617,6 +633,7 @@ def _run_a_test(
 
     # A list of input files (relative to this directory)
     # We populate this with everything we find declared as an input
+    # (unless it's of type 'molecules' and the input looks like a molecule)
     input_files: List[str] = []
 
     # Process every 'input'
@@ -639,17 +656,33 @@ def _run_a_test(
                 return None, TestResult.FAILED
 
             if variable_is_input:
-                # Is it an input (not an option).
-                # The input is a list if it's declared as 'multiple'
-                if job_definition.variables.inputs.properties[variable].multiple:
-                    job_variables[variable] = []
-                    for value in job_definition.tests[job_test_name].inputs[variable]:
-                        job_variables[variable].append(os.path.basename(value))
-                        input_files.append(value)
-                else:
+                # Variable has no corresponding input file if it's type is'molecules'
+                # and the value looks like a molecule.
+                if (
+                    job_definition.variables.inputs.properties[variable].type
+                    == "molecules"
+                ):
                     value = job_definition.tests[job_test_name].inputs[variable]
-                    job_variables[variable] = os.path.basename(value)
-                    input_files.append(value)
+                    job_variables[variable] = value
+                    prefix = _get_test_input_url_prefix(value)
+                    if prefix:
+                        # There's a prefix so it's a file (not a molecule string)
+                        # The input file for "file://one.sdf" is the basename "one.sdf"
+                        input_files.append(value[len(prefix) :])
+                else:
+                    # It is an input (not an option).
+                    # The input is a list if it's declared as 'multiple'.
+                    if job_definition.variables.inputs.properties[variable].multiple:
+                        job_variables[variable] = []
+                        for value in job_definition.tests[job_test_name].inputs[
+                            variable
+                        ]:
+                            job_variables[variable].append(os.path.basename(value))
+                            input_files.append(value)
+                    else:
+                        value = job_definition.tests[job_test_name].inputs[variable]
+                        job_variables[variable] = os.path.basename(value)
+                        input_files.append(value)
 
     decoded_command: str = ""
     test_environment: Dict[str, str] = {}
