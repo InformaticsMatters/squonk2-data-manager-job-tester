@@ -30,6 +30,7 @@ _DEFINITION_DIRECTORY: str = "data-manager"
 _DEFAULT_MANIFEST: str = os.path.join(_DEFINITION_DIRECTORY, "manifest.yaml")
 # Where can we expect to find test data?
 _DATA_DIRECTORY: str = "data"
+_DATA_DIRECTORY_PATH: str = f"{_DATA_DIRECTORY}/"
 
 # Our yamllint configuration file
 # from the same directory as us.
@@ -346,16 +347,14 @@ def _copy_inputs(test_inputs: List[str], project_path: str) -> bool:
     """Copies all the test files into the test project directory."""
 
     # The files are assumed to reside in the repo's 'data' directory.
-    print(f'# Copying inputs (from "${{PWD}}/{_DATA_DIRECTORY}")...')
-
-    expected_prefix: str = f"{_DATA_DIRECTORY}/"
+    print(f'# Copying inputs (from "${{PWD}}/{_DATA_DIRECTORY_PATH}")...')
     for test_input in test_inputs:
 
         print(f"# + {test_input}")
 
-        if not test_input.startswith(expected_prefix):
+        if not test_input.startswith(_DATA_DIRECTORY_PATH):
             print("! FAILURE")
-            print(f'! Input file {test_input} must start with "{expected_prefix}"')
+            print(f'! Input file {test_input} must start with "{_DATA_DIRECTORY_PATH}"')
             return False
         if not os.path.isfile(test_input):
             print("! FAILURE")
@@ -663,12 +662,23 @@ def _run_a_test(
                     == "molecules"
                 ):
                     value = job_definition.tests[job_test_name].inputs[variable]
-                    job_variables[variable] = value
                     prefix = _get_test_input_url_prefix(value)
                     if prefix:
-                        # There's a prefix so it's a file (not a molecule string)
-                        # The input file for "file://one.sdf" is the basename "one.sdf"
-                        input_files.append(value[len(prefix) :])
+                        # There's a prefix so it's a file (not a molecule string).
+                        # The input file is expected to be something like
+                        # "file://data/one.sdf". In this case
+                        # the input file list is extended with the value "data/one.sdf"
+                        # and the variable (passed to the test) becomes "file://one.sdf"
+                        file_path_and_name: str = value[len(prefix) :]
+                        input_files.append(file_path_and_name)
+                        data_relative_file = file_path_and_name
+                        if file_path_and_name.startswith(_DATA_DIRECTORY_PATH):
+                            data_relative_file = file_path_and_name[
+                                len(_DATA_DIRECTORY_PATH) :
+                            ]
+                        job_variables[variable] = f"{prefix}{data_relative_file}"
+                    else:
+                        job_variables[variable] = value
                 else:
                     # It is an input (not an option).
                     # The input is a list if it's declared as 'multiple'.
