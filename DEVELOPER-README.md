@@ -14,6 +14,7 @@ To get started review the pre-commit utility and the conventional commit style
 and then setup your local clone by following the **Installation** and
 **Quick Start** sections: -
 
+    pip install --upgrade pip
     pip install -r build-requirements.txt
     pre-commit install -t commit-msg -t pre-commit
 
