@@ -22,6 +22,9 @@ on:
     - '**'
     tags-ignore:
     - '**'
+  schedule:
+  # Build daily at 6:08am...
+  - cron: '8 6 * * *'
 
 jobs:
   build:
