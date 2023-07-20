@@ -45,7 +45,7 @@ jobs:
         pip install --upgrade pip
         pip install --upgrade build
         pip install --requirement requirements.txt --no-build-isolation
-        pip install --requirement build-requirements.txt
+        pip install --requirement build-requirements.txt --no-build-isolation
     - name: Test
       run: |
         pre-commit run --all-files
