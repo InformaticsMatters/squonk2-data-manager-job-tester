@@ -5,6 +5,14 @@ Informatics Matters Job Tester ("jote")
    :target: https://badge.fury.io/py/im-jote
    :alt: PyPI package (latest)
 
+.. image:: https://github.com/InformaticsMatters/squonk2-data-manager-job-tester/actions/workflows/build.yaml/badge.svg
+   :target: https://github.com/InformaticsMatters/squonk2-data-manager-job-tester/actions/workflows/build.yaml
+   :alt: Build
+
+.. image:: https://github.com/InformaticsMatters/squonk2-data-manager-job-tester/actions/workflows/publish.yaml/badge.svg
+   :target: https://github.com/InformaticsMatters/squonk2-data-manager-job-tester/actions/workflows/publish.yaml
+   :alt: Publish
+
 The **Squonk2 Job Tester** (``jote``) is a Python utility used to run *unit tests*
 that are defined in Data Manager *job implementation repositories* against
 the job's container image, images that are typically built from the same
