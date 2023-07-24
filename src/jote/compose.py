@@ -60,7 +60,6 @@ docker.runOptions = '-u $(id -u):$(id -g)'
 
 
 def _get_docker_compose_version() -> str:
-
     result = subprocess.run(
         ["docker-compose", "version"], capture_output=True, check=False, timeout=4
     )
@@ -101,7 +100,6 @@ class Compose:
         user_id: Optional[int] = None,
         group_id: Optional[int] = None,
     ):
-
         # Memory must have a Mi or Gi suffix.
         # For docker-compose we translate to 'm' and 'g'
         if memory.endswith("Mi"):
