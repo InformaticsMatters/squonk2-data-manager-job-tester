@@ -67,7 +67,6 @@ class TestResult(Enum):
 
 
 def _print_test_banner(collection: str, job_name: str, job_test_name: str) -> None:
-
     print("  ---")
     print(f"+ collection={collection} job={job_name} test={job_test_name}")
 
@@ -180,7 +179,6 @@ def _add_grouped_test(
     """
 
     for run_group_name in run_group_names:
-
         # Find the test-group for this test
         test_group_definition: Optional[DefaultMunch] = None
         for test_group in test_groups:
@@ -272,7 +270,6 @@ def _load(
     num_tests: int = 0
 
     for jd_filename in manifest_munch["job-definition-files"]:
-
         # Does the definition comply with the schema?
         # No options here - it must.
         jd_path: str = os.path.join(_DEFINITION_DIRECTORY, jd_filename)
@@ -349,7 +346,6 @@ def _copy_inputs(test_inputs: List[str], project_path: str) -> bool:
     # The files are assumed to reside in the repo's 'data' directory.
     print(f'# Copying inputs (from "${{PWD}}/{_DATA_DIRECTORY_PATH}")...')
     for test_input in test_inputs:
-
         print(f"# + {test_input}")
 
         if not test_input.startswith(_DATA_DIRECTORY_PATH):
@@ -370,7 +366,6 @@ def _copy_inputs(test_inputs: List[str], project_path: str) -> bool:
 
 
 def _check_exists(name: str, path: str, expected: bool, fix_permissions: bool) -> bool:
-
     exists: bool = os.path.exists(path)
     if expected and not exists:
         print(f"#   exists ({expected}) [FAILED]")
@@ -427,7 +422,6 @@ def _check_exists(name: str, path: str, expected: bool, fix_permissions: bool) -
 
 
 def _check_line_count(name: str, path: str, expected: int) -> bool:
-
     line_count: int = 0
     with open(path, "rt", encoding="UTF-8") as check_file:
         for _ in check_file:
@@ -682,17 +676,32 @@ def _run_a_test(
                 else:
                     # It is an input (not an option).
                     # The input is a list if it's declared as 'multiple'.
+                    #
+                    # We also have to deal with each file being a potential pair
+                    # i.e. "data/nsp13-x0176_0B.mol,data/nsp13-x0176_0B_apo-desolv.pdb"
+                    # This will appear in job_variables as: -
+                    #   "nsp13-x0176_0B.mol,nsp13-x0176_0B_apo-desolv.pdb"
+                    # and in the input files as two files: -
+                    #   "data/nsp13-x0176_0B.mol" and "data/nsp13-x0176_0B_apo-desolv.pdb"
                     if job_definition.variables.inputs.properties[variable].multiple:
                         job_variables[variable] = []
                         for value in job_definition.tests[job_test_name].inputs[
                             variable
                         ]:
-                            job_variables[variable].append(os.path.basename(value))
-                            input_files.append(value)
+                            basename_values = []
+                            for value_item in value.split(","):
+                                value_basename = os.path.basename(value_item)
+                                basename_values.append(value_basename)
+                                input_files.append(value_item)
+                            job_variables[variable].append(",".join(basename_values))
                     else:
                         value = job_definition.tests[job_test_name].inputs[variable]
-                        job_variables[variable] = os.path.basename(value)
-                        input_files.append(value)
+                        basename_values = []
+                        for value_item in value.split(","):
+                            value_basename = os.path.basename(value_item)
+                            basename_values.append(value_basename)
+                            input_files.append(value_item)
+                        job_variables[variable].append(",".join(basename_values))
 
     decoded_command: str = ""
     test_environment: Dict[str, str] = {}
@@ -728,6 +737,9 @@ def _run_a_test(
     # Get the raw (encoded) command from the job definition...
     raw_command: str = job_definition.command
     # Decode it using our variables...
+    if args.verbose:
+        print(f"> raw_command={raw_command}")
+        print(f"> job_variables={job_variables}")
     decoded_command, test_status = decoder.decode(
         raw_command,
         job_variables,
@@ -800,7 +812,6 @@ def _run_a_test(
 
     # Run the container
     if not args.dry_run:
-
         timeout_minutes: int = DEFAULT_TEST_TIMEOUT_M
         if "timeout-minutes" in job_definition.tests[job_test_name]:
             timeout_minutes = job_definition.tests[job_test_name]["timeout-minutes"]
@@ -888,7 +899,6 @@ def _run_ungrouped_tests(
     tests_failed: int = 0
 
     for job_test_name in job_definition.tests:
-
         # If a job test has been named,
         # skip this test if it doesn't match.
         # We do not include this test in the count.
@@ -957,11 +967,9 @@ def _run_grouped_tests(
 
     test_result: Optional[TestResult] = None
     for jd_filename, grouped_tests in grouped_job_definitions.items():
-
         # The grouped definitions are indexed by JobDefinition filename
         # and for each there is a list of dictionaries (indexed by group name).
         for file_run_group in grouped_tests:
-
             run_group_name: str = file_run_group["test-group-name"]
             if args.run_group and run_group_name != args.run_group:
                 # A specific group has been named
@@ -1004,7 +1012,6 @@ def _run_grouped_tests(
                                         and existing_group_test[3] == job[1]
                                         and existing_group_test[4] == job_test_name
                                     ):
-
                                         new_test = False
                                         break
 
@@ -1012,7 +1019,6 @@ def _run_grouped_tests(
                                         existing_group_test[2] != job[0]
                                         or existing_group_test[3] != job[1]
                                     ):
-
                                         # Oops - ordinal used elsewhere in this group.
                                         # Return a failure!
                                         print("! FAILURE")
@@ -1052,7 +1058,6 @@ def _run_grouped_tests(
             # 3. stop the compose file
             group_compose_file: Optional[str] = None
             for index, grouped_test in enumerate(grouped_tests):
-
                 # For each grouped test we have a test-group definition [at index 0],
                 # an 'ordinal' [1], 'collection' [2], 'job name' [3], 'job test' [4]
                 # and the 'job' definition [5]
@@ -1254,7 +1259,10 @@ def main() -> int:
     )
 
     arg_parser.add_argument(
-        "-v", "--verbose", action="store_true", help="Displays test stdout"
+        "-v",
+        "--verbose",
+        action="store_true",
+        help="Displays test stdout amongst other things",
     )
 
     arg_parser.add_argument(
@@ -1457,7 +1465,6 @@ def main() -> int:
 # MAIN
 # -----------------------------------------------------------------------------
 if __name__ == "__main__":
-
     _RET_VAL: int = main()
     if _RET_VAL != 0:
         sys.exit(_RET_VAL)

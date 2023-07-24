@@ -41,7 +41,7 @@ To build the package distribution manually run: -
 
 To install the local build, without needing to publish the package run: -
 
-    pip install dist/im_jote-1.0.0-py3-none-any.whl
+    pip install dist/im_jote-*-py3-none-any.whl
 
 ---
 
