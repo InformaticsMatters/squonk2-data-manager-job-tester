@@ -696,12 +696,15 @@ def _run_a_test(
                             job_variables[variable].append(",".join(basename_values))
                     else:
                         value = job_definition.tests[job_test_name].inputs[variable]
+                        # Accommodate multiple files in a single input (comma-separated).
+                        # We need ech to be put into 'input files' and the
+                        # basename-normalised pair put into job variables
                         basename_values = []
                         for value_item in value.split(","):
                             value_basename = os.path.basename(value_item)
                             basename_values.append(value_basename)
                             input_files.append(value_item)
-                        job_variables[variable].append(",".join(basename_values))
+                        job_variables[variable] = ",".join(basename_values)
 
     decoded_command: str = ""
     test_environment: Dict[str, str] = {}
