@@ -336,8 +336,8 @@ Installation
 This is a Python 3 utility, so try to run it from a recent (ideally 3.10)
 Python environment.
 
-To use the utility you will need to have installed `Docker`_ and,
-if you want to test nextflow jobs, `nextflow`_.
+To use the utility you will need to have installed `Docker`_, `docker-compose`,
+ and, if you want to test nextflow jobs, `nextflow`_.
 
 .. _PyPI: https://pypi.org/project/im-jote/
 .. _Docker: https://docs.docker.com/get-docker/
