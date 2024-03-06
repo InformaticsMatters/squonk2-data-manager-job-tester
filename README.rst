@@ -24,6 +24,8 @@ But jobs *are not* running in the same operating-system environment, e.g. they
 are not bound by the same processor and memory constraints they'll encounter in
 the Data Manager, which runs in `Kubernetes`_.
 
+To use ``jote`` you will need to install ``docker-compose`` (v1 or v2).
+
 A successful test should give you confidence that it *should* work in the
 Data Manger but without writing a lot of tests you'll never be completely
 confident that it will always run successfully.
