@@ -27,6 +27,8 @@ on:
 jobs:
   build-and-publish:
     runs-on: ubuntu-latest
+    permissions:
+      id-token: write  # IMPORTANT: this permission is mandatory for trusted publishing
     steps:
     - name: Checkout
       uses: actions/checkout@v4
@@ -46,6 +48,3 @@ jobs:
         python -m build --sdist --wheel --outdir dist/
     - name: Publish
       uses: pypa/gh-action-pypi-publish@release/v1
-      with:
-        user: ${{ secrets.PYPI_USERNAME }}
-        password: ${{ secrets.PYPI_TOKEN }}
