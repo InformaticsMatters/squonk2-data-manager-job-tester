@@ -8,12 +8,15 @@ to run the Job, and can remove the test directory.
 This module is designed to simulate the actions of the Data Manager
 and Job Operator that are running in the DM kubernetes deployment.
 """
+
+import contextlib
 import copy
 import os
 import shutil
 import subprocess
+import sys
 import time
-from typing import Any, Dict, Optional, Tuple
+from typing import Any, Dict, List, Optional, Tuple
 
 # The 'simulated' instance directory,
 # created by the Data Manager prior to launching the corresponding Job.
@@ -59,13 +62,44 @@ docker.runOptions = '-u $(id -u):$(id -g)'
 """
 
 
+def _get_docker_compose_command() -> str:
+    # Try 'docker compose' (v2) and then 'docker-compose' (v1)
+    # we need one or the other.
+    dc_command: str = ""
+    try:
+        _ = subprocess.run(
+            ["docker", "compose", "version"],
+            capture_output=True,
+            check=False,
+            timeout=4,
+        )
+        dc_command = "docker compose"
+    except FileNotFoundError:
+        with contextlib.suppress(FileNotFoundError):
+            _ = subprocess.run(
+                ["docker-compose", "version"],
+                capture_output=True,
+                check=False,
+                timeout=4,
+            )
+            dc_command = "docker-compose"
+    if not dc_command:
+        print("ERROR: Neither 'docker compose' nor 'docker-compose' has been found")
+        print("One of these is required.")
+        print("Please install one of them.")
+        sys.exit(1)
+
+    assert dc_command
+    return dc_command
+
+
 def _get_docker_compose_version() -> str:
-    result = subprocess.run(
-        ["docker-compose", "version"], capture_output=True, check=False, timeout=4
-    )
+    dc_command = _get_docker_compose_command()
+    version_cmd: List[str] = dc_command.split() + ["version"]
+    result = subprocess.run(version_cmd, capture_output=True, check=False, timeout=4)
 
     # stdout will contain the version on the first line: -
-    # "docker-compose version 1.29.2, build unknown"
+    # "docker-compose version v1.29.2, build unknown"
     # Ignore the first 23 characters of the first line...
     return str(result.stdout.decode("utf-8").split("\n")[0][23:])
 
@@ -77,10 +111,12 @@ def get_test_root() -> str:
 
 
 class Compose:
-    """A class handling the execution of 'docker-compose'
+    """A class handling the execution of 'docker compose'
     for an individual test.
     """
 
+    # The docker-compose command (for the first test)
+    _COMPOSE_COMMAND: Optional[str] = None
     # The docker-compose version (for the first test)
     _COMPOSE_VERSION: Optional[str] = None
 
@@ -144,10 +180,14 @@ class Compose:
         if os.path.exists(test_path):
             shutil.rmtree(test_path)
 
+        # Do we have the command?
+        if not Compose._COMPOSE_COMMAND:
+            Compose._COMPOSE_COMMAND = _get_docker_compose_command()
+            print(f"# Compose command: {Compose._COMPOSE_COMMAND}")
         # Do we have the docker-compose version the user's installed?
         if not Compose._COMPOSE_VERSION:
             Compose._COMPOSE_VERSION = _get_docker_compose_version()
-            print(f"# Compose: docker-compose ({Compose._COMPOSE_VERSION})")
+            print(f"# Compose version: {Compose._COMPOSE_VERSION}")
 
         # Make the test directory
         # (where the test is launched from)
@@ -159,15 +199,8 @@ class Compose:
             os.makedirs(inst_path)
 
         # Run as a specific user/group ID?
-        if self._user_id is not None:
-            user_id = self._user_id
-        else:
-            user_id = os.getuid()
-        if self._group_id is not None:
-            group_id = self._group_id
-        else:
-            group_id = os.getgid()
-
+        user_id = self._user_id if self._user_id is not None else os.getuid()
+        group_id = self._group_id if self._group_id is not None else os.getgid()
         # Write the Docker compose content to a file in the test directory
         additional_environment: str = ""
         if self._test_environment:
@@ -214,15 +247,17 @@ class Compose:
         caller along with the stdout and stderr content.
         A non-zero exit code does not necessarily mean the test has failed.
         """
+        assert Compose._COMPOSE_COMMAND
 
         execution_directory: str = self.get_test_path()
 
-        print('# Compose: Executing the test ("docker-compose up")...')
+        print(f'# Compose: Executing the test ("{Compose._COMPOSE_COMMAND} up")...')
         print(f'# Compose: Execution directory is "{execution_directory}"')
 
         cwd = os.getcwd()
         os.chdir(execution_directory)
 
+        timeout: bool = False
         try:
             # Run the container, and then cleanup.
             # If a test environment is set then we pass in these values to the
@@ -237,33 +272,45 @@ class Compose:
             # we set the prefix for the network name and can use compose files
             # from different directories. Without this the network name
             # is prefixed by the directory the compose file is in.
+            up_cmd: List[str] = Compose._COMPOSE_COMMAND.split() + [
+                "-p",
+                "data-manager",
+                "up",
+                "--exit-code-from",
+                "job",
+                "--abort-on-container-exit",
+            ]
             test = subprocess.run(
-                [
-                    "docker-compose",
-                    "-p",
-                    "data-manager",
-                    "up",
-                    "--exit-code-from",
-                    "job",
-                    "--abort-on-container-exit",
-                ],
+                up_cmd,
                 capture_output=True,
                 timeout=timeout_minutes * 60,
                 check=False,
                 env=env,
             )
+            down_cmd: List[str] = Compose._COMPOSE_COMMAND.split() + ["down"]
             _ = subprocess.run(
-                ["docker-compose", "down"],
+                down_cmd,
                 capture_output=True,
                 timeout=240,
                 check=False,
             )
+        except:  # pylint: disable=bare-except
+            timeout = True
         finally:
             os.chdir(cwd)
 
-        print(f"# Compose: Executed (exit code {test.returncode})")
+        if timeout:
+            print("# Compose: ERROR - Test timeout")
+            return_code: int = -911
+            test_stdout: str = ""
+            test_stderr: str = ""
+        else:
+            print(f"# Compose: Executed (exit code {test.returncode})")
+            return_code = test.returncode
+            test_stdout = test.stdout.decode("utf-8")
+            test_stderr = test.stderr.decode("utf-8")
 
-        return test.returncode, test.stdout.decode("utf-8"), test.stderr.decode("utf-8")
+        return return_code, test_stdout, test_stderr
 
     def delete(self) -> None:
         """Deletes a test directory created by 'create()'."""
@@ -279,9 +326,10 @@ class Compose:
     def run_group_compose_file(compose_file: str, delay_seconds: int = 0) -> bool:
         """Starts a group compose file in a detached state.
         The file is expected to be a compose file in the 'data-manager' directory.
-        We pull the continer imag to reduce the 'docker-compose up' time
+        We pull the container image to reduce the 'docker-compose up' time
         and then optionally wait for a period of seconds.
         """
+        assert Compose._COMPOSE_COMMAND
 
         print("# Compose: Starting test group containers...")
 
@@ -290,13 +338,13 @@ class Compose:
         try:
             # Pre-pull the docker-compose images.
             # This saves start-up execution time.
+            pull_cmd: List[str] = Compose._COMPOSE_COMMAND.split() + [
+                "-f",
+                os.path.join("data-manager", compose_file),
+                "pull",
+            ]
             _ = subprocess.run(
-                [
-                    "docker-compose",
-                    "-f",
-                    os.path.join("data-manager", compose_file),
-                    "pull",
-                ],
+                pull_cmd,
                 capture_output=False,
                 check=False,
             )
@@ -306,16 +354,16 @@ class Compose:
             # we set the prefix for the network name and services from this container
             # are visible to the test container. Without this the network name
             # is prefixed by the directory the compose file is in.
+            up_cmd: List[str] = Compose._COMPOSE_COMMAND.split() + [
+                "-f",
+                os.path.join("data-manager", compose_file),
+                "-p",
+                "data-manager",
+                "up",
+                "-d",
+            ]
             _ = subprocess.run(
-                [
-                    "docker-compose",
-                    "-f",
-                    os.path.join("data-manager", compose_file),
-                    "-p",
-                    "data-manager",
-                    "up",
-                    "-d",
-                ],
+                up_cmd,
                 capture_output=False,
                 check=False,
             )
@@ -335,19 +383,20 @@ class Compose:
         """Stops a group compose file.
         The file is expected to be a compose file in the 'data-manager' directory.
         """
+        assert Compose._COMPOSE_COMMAND
 
         print("# Compose: Stopping test group containers...")
 
         try:
             # Bring the compose file down...
+            down_cmd: List[str] = Compose._COMPOSE_COMMAND.split() + [
+                "-f",
+                os.path.join("data-manager", compose_file),
+                "down",
+                "--remove-orphans",
+            ]
             _ = subprocess.run(
-                [
-                    "docker-compose",
-                    "-f",
-                    os.path.join("data-manager", compose_file),
-                    "down",
-                    "--remove-orphans",
-                ],
+                down_cmd,
                 capture_output=False,
                 timeout=240,
                 check=False,
