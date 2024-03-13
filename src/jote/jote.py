@@ -768,10 +768,7 @@ def _run_a_test(
         job_image = f"{job_definition.image.name}:{job_definition.image.tag}"
     job_image_memory: str = job_definition.image["memory"]
     if job_image_memory is None:
-        job_image_memory = "1G"
-    elif job_image_memory.lower().endswith("i"):
-        # Strip trailing kubernetes 'i' - not liked by compose
-        job_image_memory = job_image_memory[:-1]
+        job_image_memory = "1Gi"
     job_image_cores: int = job_definition.image["cores"]
     if job_image_cores is None:
         job_image_cores = 1

@@ -138,8 +138,9 @@ class Compose:
     ):
         # Memory must have a Mi or Gi suffix.
         # For docker-compose we translate to 'm' and 'g'
+        self._memory: str = "1g"
         if memory.endswith("Mi"):
-            self._memory: str = f"{memory[:-2]}m"
+            self._memory = f"{memory[:-2]}m"
         elif memory.endswith("Gi"):
             self._memory = f"{memory[:-2]}g"
         assert self._memory
