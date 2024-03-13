@@ -257,6 +257,7 @@ class Compose:
         cwd = os.getcwd()
         os.chdir(execution_directory)
 
+        timeout: bool = False
         try:
             # Run the container, and then cleanup.
             # If a test environment is set then we pass in these values to the
@@ -293,12 +294,23 @@ class Compose:
                 timeout=240,
                 check=False,
             )
+        except:  # pylint: disable=bare-except
+            timeout = True
         finally:
             os.chdir(cwd)
 
-        print(f"# Compose: Executed (exit code {test.returncode})")
+        if timeout:
+            print("# Compose: ERROR - Test timeout")
+            return_code: int = -911
+            test_stdout: str = ""
+            test_stderr: str = ""
+        else:
+            print(f"# Compose: Executed (exit code {test.returncode})")
+            return_code = test.returncode
+            test_stdout = test.stdout.decode("utf-8")
+            test_stderr = test.stderr.decode("utf-8")
 
-        return test.returncode, test.stdout.decode("utf-8"), test.stderr.decode("utf-8")
+        return return_code, test_stdout, test_stderr
 
     def delete(self) -> None:
         """Deletes a test directory created by 'create()'."""
