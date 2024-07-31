@@ -116,9 +116,9 @@ class Compose:
     """
 
     # The docker-compose command (for the first test)
-    _COMPOSE_COMMAND: Optional[str] = None
+    _COMPOSE_COMMAND: str = ""
     # The docker-compose version (for the first test)
-    _COMPOSE_VERSION: Optional[str] = None
+    _COMPOSE_VERSION: str = ""
 
     def __init__(
         self,
@@ -158,14 +158,7 @@ class Compose:
         self._user_id: Optional[int] = user_id
         self._group_id: Optional[int] = group_id
 
-        # Do we have the 'docker compose' command?
-        if not Compose._COMPOSE_COMMAND:
-            Compose._COMPOSE_COMMAND = _get_docker_compose_command()
-            print(f"# Compose command: {Compose._COMPOSE_COMMAND}")
-        # Do we have the 'docker-compose' command?
-        if not Compose._COMPOSE_VERSION:
-            Compose._COMPOSE_VERSION = _get_docker_compose_version()
-            print(f"# Compose version: {Compose._COMPOSE_VERSION}")
+        assert Compose.try_to_set_compose_command()
 
     def get_test_path(self) -> str:
         """Returns the path to the root directory for a given test."""
@@ -248,7 +241,7 @@ class Compose:
         caller along with the stdout and stderr content.
         A non-zero exit code does not necessarily mean the test has failed.
         """
-        assert Compose._COMPOSE_COMMAND
+        assert Compose.try_to_set_compose_command()
 
         execution_directory: str = self.get_test_path()
 
@@ -324,13 +317,30 @@ class Compose:
         print("# Compose: Deleted")
 
     @staticmethod
+    def try_to_set_compose_command() -> bool:
+        """Tries to find the docker-compose command,
+        setting Compose._COMPOSE_COMMAND when found"""
+        # Do we have the 'docker compose' command?
+        if not Compose._COMPOSE_COMMAND:
+            Compose._COMPOSE_COMMAND = _get_docker_compose_command()
+            print(f"# Compose command: {Compose._COMPOSE_COMMAND}")
+        # Do we have the 'docker-compose' command?
+        if not Compose._COMPOSE_VERSION:
+            Compose._COMPOSE_VERSION = _get_docker_compose_version()
+            print(f"# Compose version: {Compose._COMPOSE_VERSION}")
+
+        if Compose._COMPOSE_COMMAND and Compose._COMPOSE_VERSION:
+            return True
+        return False
+
+    @staticmethod
     def run_group_compose_file(compose_file: str, delay_seconds: int = 0) -> bool:
         """Starts a group compose file in a detached state.
         The file is expected to be a compose file in the 'data-manager' directory.
         We pull the container image to reduce the 'docker-compose up' time
         and then optionally wait for a period of seconds.
         """
-        assert Compose._COMPOSE_COMMAND
+        assert Compose.try_to_set_compose_command()
 
         print("# Compose: Starting test group containers...")
 
@@ -384,7 +394,7 @@ class Compose:
         """Stops a group compose file.
         The file is expected to be a compose file in the 'data-manager' directory.
         """
-        assert Compose._COMPOSE_COMMAND
+        assert Compose.try_to_set_compose_command()
 
         print("# Compose: Stopping test group containers...")
 
