@@ -158,6 +158,15 @@ class Compose:
         self._user_id: Optional[int] = user_id
         self._group_id: Optional[int] = group_id
 
+        # Do we have the 'docker compose' command?
+        if not Compose._COMPOSE_COMMAND:
+            Compose._COMPOSE_COMMAND = _get_docker_compose_command()
+            print(f"# Compose command: {Compose._COMPOSE_COMMAND}")
+        # Do we have the 'docker-compose' command?
+        if not Compose._COMPOSE_VERSION:
+            Compose._COMPOSE_VERSION = _get_docker_compose_version()
+            print(f"# Compose version: {Compose._COMPOSE_VERSION}")
+
     def get_test_path(self) -> str:
         """Returns the path to the root directory for a given test."""
         root: str = get_test_root()
@@ -180,15 +189,6 @@ class Compose:
         test_path: str = self.get_test_path()
         if os.path.exists(test_path):
             shutil.rmtree(test_path)
-
-        # Do we have the command?
-        if not Compose._COMPOSE_COMMAND:
-            Compose._COMPOSE_COMMAND = _get_docker_compose_command()
-            print(f"# Compose command: {Compose._COMPOSE_COMMAND}")
-        # Do we have the docker-compose version the user's installed?
-        if not Compose._COMPOSE_VERSION:
-            Compose._COMPOSE_VERSION = _get_docker_compose_version()
-            print(f"# Compose version: {Compose._COMPOSE_VERSION}")
 
         # Make the test directory
         # (where the test is launched from)
