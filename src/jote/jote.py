@@ -12,7 +12,7 @@ import stat
 from stat import S_IRGRP, S_IRUSR, S_IWGRP, S_IWUSR
 import subprocess
 import sys
-from typing import Any, Dict, List, Optional, Tuple
+from typing import Any
 
 from munch import DefaultMunch
 import yaml
@@ -97,7 +97,7 @@ def _lint(definition_filename: str) -> bool:
     return True
 
 
-def _get_test_input_url_prefix(test_input_string: str) -> Optional[str]:
+def _get_test_input_url_prefix(test_input_string: str) -> str | None:
     """Gets the string's file prefix (e.g. "file://") from what's expected to be
     a test input string or None if there isn't one. If the prefix is "file://"
     this function returns "file://".
@@ -112,13 +112,13 @@ def _validate_schema(definition_filename: str) -> bool:
     """Checks the Job Definition against the decoder's schema."""
 
     with open(definition_filename, "rt", encoding="UTF-8") as definition_file:
-        job_def: Optional[Dict[str, Any]] = yaml.load(
+        job_def: dict[str, Any] | None = yaml.load(
             definition_file, Loader=yaml.FullLoader
         )
     assert job_def
 
     # If the decoder returns something there's been an error.
-    error: Optional[str] = decoder.validate_job_schema(job_def)
+    error: str | None = decoder.validate_job_schema(job_def)
     if error:
         print(
             f'! Job definition "{definition_filename}"' " does not comply with schema"
@@ -134,13 +134,13 @@ def _validate_manifest_schema(manifest_filename: str) -> bool:
     """Checks the Manifest against the decoder's schema."""
 
     with open(manifest_filename, "rt", encoding="UTF-8") as definition_file:
-        job_def: Optional[Dict[str, Any]] = yaml.load(
+        job_def: dict[str, Any] | None = yaml.load(
             definition_file, Loader=yaml.FullLoader
         )
     assert job_def
 
     # If the decoder returns something there's been an error.
-    error: Optional[str] = decoder.validate_manifest_schema(job_def)
+    error: str | None = decoder.validate_manifest_schema(job_def)
     if error:
         print(f'! Manifest "{manifest_filename}"' " does not comply with schema")
         print("! Full response follows:")
@@ -154,7 +154,7 @@ def _check_cwd() -> bool:
     """Checks the execution directory for sanity (cwd). Here we must find
     a data-manager directory
     """
-    expected_directories: List[str] = [_DEFINITION_DIRECTORY, _DATA_DIRECTORY]
+    expected_directories: list[str] = [_DEFINITION_DIRECTORY, _DATA_DIRECTORY]
     for expected_directory in expected_directories:
         if not os.path.isdir(expected_directory):
             print(f'! Expected directory "{expected_directory}"' " but it is not here")
@@ -167,10 +167,10 @@ def _add_grouped_test(
     jd_filename: str,
     job_collection: str,
     job_name: str,
-    job: List[DefaultMunch],
-    run_group_names: List[str],
-    test_groups: List[DefaultMunch],
-    grouped_job_definitions: Dict[str, Any],
+    job: list[DefaultMunch],
+    run_group_names: list[str],
+    test_groups: list[DefaultMunch],
+    grouped_job_definitions: dict[str, Any],
 ) -> None:
     """Adds a job definition to a test group for a job-definition file.
 
@@ -180,7 +180,7 @@ def _add_grouped_test(
 
     for run_group_name in run_group_names:
         # Find the test-group for this test
-        test_group_definition: Optional[DefaultMunch] = None
+        test_group_definition: DefaultMunch | None = None
         for test_group in test_groups:
             if test_group.name == run_group_name:
                 test_group_definition = test_group
@@ -224,7 +224,7 @@ def _add_grouped_test(
 
 def _load(
     manifest_filename: str, skip_lint: bool
-) -> Tuple[List[DefaultMunch], Dict[str, Any], int]:
+) -> tuple[list[DefaultMunch], dict[str, Any], int]:
     """Loads definition files listed in the manifest
     and extracts the definitions that contain at least one test. The
     definition blocks for those that have tests (ignored or otherwise)
@@ -248,10 +248,10 @@ def _load(
         return [], {}, -1
 
     with open(manifest_path, "r", encoding="UTF-8") as manifest_file:
-        manifest: Dict[str, Any] = yaml.load(manifest_file, Loader=yaml.FullLoader)
-    manifest_munch: Optional[DefaultMunch] = None
+        manifest: dict[str, Any] = yaml.load(manifest_file, Loader=yaml.FullLoader)
+    manifest_munch: DefaultMunch | None = None
     if manifest:
-        manifest_munch = DefaultMunch.fromDict(manifest)
+        manifest_munch = DefaultMunch.fromdict(manifest)
     assert manifest_munch
 
     # Iterate through the named files.
@@ -265,8 +265,8 @@ def _load(
     #     <test compose file>
     #     - <job-definition>
     #
-    job_definitions: List[DefaultMunch] = []
-    grouped_job_definitions: Dict[str, Any] = {}
+    job_definitions: list[DefaultMunch] = []
+    grouped_job_definitions: dict[str, Any] = {}
     num_tests: int = 0
 
     for jd_filename in manifest_munch["job-definition-files"]:
@@ -283,15 +283,15 @@ def _load(
 
         # Load the Job definitions optionally compiling a set of 'run-groups'
         with open(jd_path, "r", encoding="UTF-8") as jd_file:
-            job_def: Dict[str, Any] = yaml.load(jd_file, Loader=yaml.FullLoader)
+            job_def: dict[str, Any] = yaml.load(jd_file, Loader=yaml.FullLoader)
 
         if job_def:
-            jd_munch: DefaultMunch = DefaultMunch.fromDict(job_def)
+            jd_munch: DefaultMunch = DefaultMunch.fromdict(job_def)
 
             jd_collection: str = jd_munch["collection"]
 
             # Test groups defined in this file...
-            test_groups: List[DefaultMunch] = []
+            test_groups: list[DefaultMunch] = []
             if "test-groups" in jd_munch:
                 for test_group in jd_munch["test-groups"]:
                     test_groups.append(test_group)
@@ -300,7 +300,7 @@ def _load(
             # It goes into 'job_definitions' if it has at least one non-grouped test,
             # and into 'grouped_job_definitions' if it has at least one grouped test.
             for jd_name in jd_munch.jobs:
-                test_run_group_names: List[str] = []
+                test_run_group_names: list[str] = []
                 if jd_munch.jobs[jd_name].tests:
                     # Job has some tests
                     num_tests += len(jd_munch.jobs[jd_name].tests)
@@ -340,7 +340,7 @@ def _load(
     return job_definitions, grouped_job_definitions, num_tests
 
 
-def _copy_inputs(test_inputs: List[str], project_path: str) -> bool:
+def _copy_inputs(test_inputs: list[str], project_path: str) -> bool:
     """Copies all the test files into the test project directory."""
 
     # The files are assumed to reside in the repo's 'data' directory.
@@ -448,7 +448,7 @@ def _check(
     assert t_compose
     assert isinstance(t_compose, Compose)
     assert output_checks
-    assert isinstance(output_checks, List)
+    assert isinstance(output_checks, list)
 
     print("# Checking...")
 
@@ -484,9 +484,9 @@ def _run_nextflow(
     command: str,
     project_path: str,
     nextflow_config_file: str,
-    test_environment: Optional[Dict[str, str]] = None,
+    test_environment: dict[str, str] | None = None,
     timeout_minutes: int = DEFAULT_TEST_TIMEOUT_M,
-) -> Tuple[int, str, str]:
+) -> tuple[int, str, str]:
     """Runs nextflow in the project directory returning the exit code,
     stdout and stderr.
     """
@@ -527,7 +527,7 @@ def _run_nextflow(
     # Inject an environment?
     # Yes if some variables are provided.
     # We copy the exiting env and add those provided.
-    env: Optional[Dict[str, Any]] = None
+    env: dict[str, Any] | None = None
     if test_environment:
         env = os.environ.copy()
         env.update(test_environment)
@@ -556,8 +556,8 @@ def _run_a_test(
     job_definition: DefaultMunch,
     test_group: str = "",
     test_group_ordinal: int = 0,
-    test_group_environment: Optional[Dict[str, Any]] = None,
-) -> Tuple[Optional[Compose], TestResult]:
+    test_group_environment: dict[str, Any] | None = None,
+) -> tuple[Compose | None, TestResult]:
     """Runs a singe test printing a test group and non-zero optional ordinal,
     which is used for group test runs. If a test group is provided a valid ordinal
     (1..N) must also be used."""
@@ -600,7 +600,7 @@ def _run_a_test(
     # Render the command for this test.
 
     # First extract any variables and values from 'options' (if there are any).
-    job_variables: Dict[str, Any] = {}
+    job_variables: dict[str, Any] = {}
     if job_definition.tests[job_test_name].options:
         for variable in job_definition.tests[job_test_name].options:
             job_variables[variable] = job_definition.tests[job_test_name].options[
@@ -627,7 +627,7 @@ def _run_a_test(
     # A list of input files (relative to this directory)
     # We populate this with everything we find declared as an input
     # (unless it's of type 'molecules' and the input looks like a molecule)
-    input_files: List[str] = []
+    input_files: list[str] = []
 
     # Process every 'input'
     if job_definition.tests[job_test_name].inputs:
@@ -707,7 +707,7 @@ def _run_a_test(
                         job_variables[variable] = ",".join(basename_values)
 
     decoded_command: str = ""
-    test_environment: Dict[str, str] = {}
+    test_environment: dict[str, str] = {}
 
     # Jote injects Job variables that are expected.
     # 'DM_' variables are injected by the Data Manager,
@@ -725,7 +725,7 @@ def _run_a_test(
             if test_group_environment and env_name in test_group_environment:
                 # The environment variable is provided by the test group,
                 # we don't need to go to the OS, we'll use what's provided.
-                env_value: Optional[str] = str(test_group_environment[env_name])
+                env_value: str | None = str(test_group_environment[env_name])
             else:
                 env_value = os.environ.get(env_name, None)
                 if env_value is None:
@@ -888,7 +888,7 @@ def _run_ungrouped_tests(
     collection: str,
     job: str,
     job_definition: DefaultMunch,
-) -> Tuple[int, int, int, int]:
+) -> tuple[int, int, int, int]:
     """Runs the tests for a specific Job definition returning the number
     of tests passed, skipped (due to run-level), ignored and failed.
     """
@@ -944,8 +944,8 @@ def _run_ungrouped_tests(
 
 def _run_grouped_tests(
     args: argparse.Namespace,
-    grouped_job_definitions: Dict[str, Any],
-) -> Tuple[int, int, int, int]:
+    grouped_job_definitions: dict[str, Any],
+) -> tuple[int, int, int, int, int]:
     """Runs grouped tests.
     Test provided indexed by job-definition file path.
     Here we run all the tests that belong to a group without resetting
@@ -953,6 +953,7 @@ def _run_grouped_tests(
     """
 
     # The test status, assume success
+    tests_found: int = 0
     tests_passed: int = 0
     tests_skipped: int = 0
     tests_ignored: int = 0
@@ -968,7 +969,7 @@ def _run_grouped_tests(
     #
     # See '_add_grouped_test()', which is used by _load() to build the map.
 
-    test_result: Optional[TestResult] = None
+    test_result: TestResult | None = None
     for jd_filename, grouped_tests in grouped_job_definitions.items():
         # The grouped definitions are indexed by JobDefinition filename
         # and for each there is a list of dictionaries (indexed by group name).
@@ -978,8 +979,8 @@ def _run_grouped_tests(
                 # A specific group has been named
                 # and this isn't it, so skip these tests.
                 continue
-            group_struct: Dict[str, Any] = file_run_group["test-group"]
-            jobs: List[Tuple[str, str, DefaultMunch]] = file_run_group["jobs"]
+            group_struct: dict[str, Any] = file_run_group["test-group"]
+            jobs: list[tuple[str, str, DefaultMunch]] = file_run_group["jobs"]
 
             # We have a run-group structure (e.g.  a name and optional compose file)
             # and a list of jobs (job definitions), each with at least one test in
@@ -1032,6 +1033,7 @@ def _run_grouped_tests(
                                         )
                                         tests_failed += 1
                                         return (
+                                            tests_found,
                                             tests_passed,
                                             tests_skipped,
                                             tests_ignored,
@@ -1059,11 +1061,12 @@ def _run_grouped_tests(
             # 1. Apply the group compose file (if there is one)
             # 2. run the tests (in ordinal order)
             # 3. stop the compose file
-            group_compose_file: Optional[str] = None
+            group_compose_file: str | None = None
             for index, grouped_test in enumerate(grouped_tests):
                 # For each grouped test we have a test-group definition [at index 0],
                 # an 'ordinal' [1], 'collection' [2], 'job name' [3], 'job test' [4]
                 # and the 'job' definition [5]
+                tests_found += 1
 
                 # Start the group compose file?
                 if index == 0 and "compose" in grouped_test[0] and not args.dry_run:
@@ -1086,7 +1089,7 @@ def _run_grouped_tests(
                         break
 
                 # Does the test group define an environment?
-                test_group_environment: Dict[str, Any] = {}
+                test_group_environment: dict[str, Any] = {}
                 if grouped_test[0].environment:
                     for gt_env in grouped_test[0].environment:
                         key: str = list(gt_env.keys())[0]
@@ -1136,7 +1139,7 @@ def _run_grouped_tests(
         if test_result == TestResult.FAILED and args.exit_on_failure:
             break
 
-    return tests_passed, tests_skipped, tests_ignored, tests_failed
+    return tests_found, tests_passed, tests_skipped, tests_ignored, tests_failed
 
 
 def _wipe() -> None:
@@ -1335,6 +1338,7 @@ def main() -> int:
         arg_parser.error("Cannot use --run-groups and --test")
 
     # Args are OK if we get here.
+    total_found_count: int = 0
     total_passed_count: int = 0
     total_skipped_count: int = 0
     total_ignore_count: int = 0
@@ -1424,10 +1428,17 @@ def main() -> int:
     # Success so far.
     # Run grouped tests?
     if grouped_job_definitions:
-        num_passed, num_skipped, num_ignored, num_failed = _run_grouped_tests(
+        (
+            num_found,
+            num_passed,
+            num_skipped,
+            num_ignored,
+            num_failed,
+        ) = _run_grouped_tests(
             args,
             grouped_job_definitions,
         )
+        total_found_count += num_found
         total_passed_count += num_passed
         total_skipped_count += num_skipped
         total_ignore_count += num_ignored
@@ -1438,7 +1449,8 @@ def main() -> int:
     print("  ---")
     dry_run: str = "[DRY RUN]" if args.dry_run else ""
     summary: str = (
-        f"passed={total_passed_count}"
+        f"found={total_found_count}"
+        f" passed={total_passed_count}"
         f" skipped={total_skipped_count}"
         f" ignored={total_ignore_count}"
         f" failed={total_failed_count}"
@@ -1447,9 +1459,12 @@ def main() -> int:
     if total_failed_count:
         arg_parser.error(f"Done (FAILURE) {summary} {dry_run}")
         failed = True
+    elif total_found_count == 0 and not args.allow_no_tests:
+        arg_parser.error(f"Done (FAILURE) {summary} (no tests were found) {dry_run}")
+        failed = True
     elif total_passed_count == 0 and not args.allow_no_tests:
         arg_parser.error(
-            f"Done (FAILURE) {summary}" f" (at least one test must pass)" f" {dry_run}"
+            f"Done (FAILURE) {summary} (at least one test must pass) {dry_run}"
         )
         failed = True
     else:
