@@ -1169,6 +1169,20 @@ def arg_check_run_as_user(value: str) -> int:
     return i_value
 
 
+def validate_collection_name(argument: str) -> str:
+    """Raises an ArgumentTypeError if the argument is not a valid collection name"""
+    if decoder.is_valid_collection_name(argument):
+        return argument
+    raise argparse.ArgumentTypeError(f"'{argument}' is not a valid collection name")
+
+
+def validate_job_name(argument: str) -> str:
+    """Raises an ArgumentTypeError if the argument is not a valid job name"""
+    if decoder.is_valid_job_name(argument):
+        return argument
+    raise argparse.ArgumentTypeError(f"'{argument}' is not a valid job name")
+
+
 # -----------------------------------------------------------------------------
 # main
 # -----------------------------------------------------------------------------
@@ -1194,9 +1208,13 @@ def main() -> int:
     arg_parser.add_argument(
         "-c",
         "--collection",
-        help="The Job collection to test. If not"
-        " specified the Jobs in all collections"
+        help="The Job collection name to test."
+        " This is the collection name used by Jobs in job definition files"
+        " referred to by the manifest."
+        " It is not the name of a Job definition file."
+        " If not specified the Jobs in all collections found"
         " will be candidates for testing.",
+        type=validate_collection_name,
     )
     arg_parser.add_argument(
         "-j",
@@ -1205,6 +1223,7 @@ def main() -> int:
         " is required. If not specified all the Jobs"
         " that match the collection will be"
         " candidates for testing.",
+        type=validate_job_name,
     )
     arg_parser.add_argument(
         "--image-tag",
