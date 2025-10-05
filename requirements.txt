@@ -1,7 +1,7 @@
 im-data-manager-job-decoder == 2.5.0
 munch == 2.5.0
 wheel == 0.40.0
-yamllint == 1.32.0
+yamllint == 1.37.1
 
 # Docker compose limits us to PyYAML 5.x
 # Cython 3 issues (20 Jul) prevent us from using PyYAML 5.4.1
