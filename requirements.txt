@@ -1,4 +1,4 @@
-im-data-manager-job-decoder == 2.2.0
+im-data-manager-job-decoder == 2.5.0
 munch == 2.5.0
 wheel == 0.40.0
 yamllint == 1.32.0
