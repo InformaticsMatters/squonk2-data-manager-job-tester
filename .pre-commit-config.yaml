@@ -20,7 +20,7 @@ repos:
 
 # Standard pre-commit rules
 - repo: https://github.com/pre-commit/pre-commit-hooks
-  rev: v4.4.0
+  rev: v6.0.0
   hooks:
   - id: check-case-conflict
   - id: check-docstring-first
@@ -50,9 +50,7 @@ repos:
     - --non-interactive
 # Pylint
 - repo: https://github.com/pycqa/pylint
-  rev: v2.17.4
+  rev: v3.3.9
   hooks:
   - id: pylint
     files: ^src
-    additional_dependencies:
-    - setuptools
