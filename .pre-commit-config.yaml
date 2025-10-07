@@ -54,3 +54,5 @@ repos:
   hooks:
   - id: pylint
     files: ^src
+    additional_dependencies:
+    - setuptools
