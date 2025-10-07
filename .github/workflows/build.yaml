@@ -46,6 +46,7 @@ jobs:
       run: |
         pip install --upgrade pip
         pip install --upgrade build
+        pip install --upgrade setuptools
         pip install --requirement requirements.txt
         pip install --requirement build-requirements.txt
     - name: Test
