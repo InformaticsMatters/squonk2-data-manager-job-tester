@@ -251,7 +251,7 @@ def _load(
         manifest: dict[str, Any] = yaml.load(manifest_file, Loader=yaml.FullLoader)
     manifest_munch: DefaultMunch | None = None
     if manifest:
-        manifest_munch = DefaultMunch.fromdict(manifest)
+        manifest_munch = DefaultMunch.fromDict(manifest)
     assert manifest_munch
 
     # Iterate through the named files.
@@ -286,7 +286,7 @@ def _load(
             job_def: dict[str, Any] = yaml.load(jd_file, Loader=yaml.FullLoader)
 
         if job_def:
-            jd_munch: DefaultMunch = DefaultMunch.fromdict(job_def)
+            jd_munch: DefaultMunch = DefaultMunch.fromDict(job_def)
 
             jd_collection: str = jd_munch["collection"]
 
