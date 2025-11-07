@@ -888,7 +888,7 @@ def _run_ungrouped_tests(
     collection: str,
     job: str,
     job_definition: DefaultMunch,
-) -> tuple[int, int, int, int]:
+) -> tuple[int, int, int, int, int]:
     """Runs the tests for a specific Job definition returning the number
     of tests passed, skipped (due to run-level), ignored and failed.
     """
@@ -896,6 +896,7 @@ def _run_ungrouped_tests(
     assert isinstance(job_definition, DefaultMunch)
 
     # The test status, assume success
+    tests_found: int = 0
     tests_passed: int = 0
     tests_skipped: int = 0
     tests_ignored: int = 0
@@ -929,6 +930,7 @@ def _run_ungrouped_tests(
             compose.delete()
 
         # Count?
+        tests_found += 1
         if test_result == TestResult.PASSED:
             print("- SUCCESS")
             tests_passed += 1
@@ -939,7 +941,7 @@ def _run_ungrouped_tests(
         if test_result == TestResult.FAILED and args.exit_on_failure:
             break
 
-    return tests_passed, tests_skipped, tests_ignored, tests_failed
+    return tests_found, tests_passed, tests_skipped, tests_ignored, tests_failed
 
 
 def _run_grouped_tests(
@@ -1420,6 +1422,7 @@ def main() -> int:
                 # These will be handled sepratately.
                 if job_definition.jobs[job_name].tests:
                     (
+                        num_found,
                         num_passed,
                         num_skipped,
                         num_ignored,
@@ -1431,6 +1434,7 @@ def main() -> int:
                         job_name,
                         job_definition.jobs[job_name],
                     )
+                    total_found_count += num_found
                     total_passed_count += num_passed
                     total_skipped_count += num_skipped
                     total_ignore_count += num_ignored
