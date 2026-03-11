@@ -3,22 +3,6 @@ name: publish
 
 # Actions for any tag.
 
-# -----------------
-# Control variables (GitHub Secrets)
-# -----------------
-#
-# At the GitHub 'organisation' or 'project' level you must have the following
-# GitHub 'Repository Secrets' defined (i.e. via 'Settings -> Secrets'): -
-#
-# PYPI_USERNAME
-# PYPI_TOKEN
-#
-# -----------
-# Environment (GitHub Environments)
-# -----------
-#
-# Environment         (none)
-
 on:
   push:
     tags:
@@ -31,11 +15,11 @@ jobs:
       id-token: write  # IMPORTANT: this permission is mandatory for trusted publishing
     steps:
     - name: Checkout
-      uses: actions/checkout@v4
+      uses: actions/checkout@v6
     - name: Inject slug/short variables
-      uses: rlespinasse/github-slug-action@v4
+      uses: rlespinasse/github-slug-action@v5
     - name: Set up Python
-      uses: actions/setup-python@v5
+      uses: actions/setup-python@v6
       with:
         python-version: '3.11'
     - name: Install dependencies

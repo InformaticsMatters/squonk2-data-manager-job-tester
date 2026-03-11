@@ -132,7 +132,7 @@ class Compose:
         project_directory: str,
         working_directory: str,
         command: str,
-        test_environment: Dict[str, str],
+        environment: Dict[str, str],
         user_id: Optional[int] = None,
         group_id: Optional[int] = None,
     ):
@@ -154,7 +154,7 @@ class Compose:
         self._project_directory: str = project_directory
         self._working_directory: str = working_directory
         self._command: str = command
-        self._test_environment = copy.deepcopy(test_environment)
+        self._environment = copy.deepcopy(environment)
         self._user_id: Optional[int] = user_id
         self._group_id: Optional[int] = group_id
 
@@ -197,8 +197,8 @@ class Compose:
         group_id = self._group_id if self._group_id is not None else os.getgid()
         # Write the Docker compose content to a file in the test directory
         additional_environment: str = ""
-        if self._test_environment:
-            for e_name, e_value in self._test_environment.items():
+        if self._environment:
+            for e_name, e_value in self._environment.items():
                 additional_environment += f"    - {e_name}={e_value}\n"
         variables: Dict[str, Any] = {
             "command": self._command,
@@ -258,9 +258,9 @@ class Compose:
             # process as we run it - but it also needs to have a copy of the
             # exiting environment.
             env: Optional[Dict[str, Any]] = None
-            if self._test_environment:
+            if self._environment:
                 env = os.environ.copy()
-                env.update(self._test_environment)
+                env.update(self._environment)
 
             # By using '-p' ('--project-name')
             # we set the prefix for the network name and can use compose files

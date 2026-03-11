@@ -484,7 +484,7 @@ def _run_nextflow(
     command: str,
     project_path: str,
     nextflow_config_file: str,
-    test_environment: dict[str, str] | None = None,
+    environment: dict[str, str] | None = None,
     timeout_minutes: int = DEFAULT_TEST_TIMEOUT_M,
 ) -> tuple[int, str, str]:
     """Runs nextflow in the project directory returning the exit code,
@@ -528,9 +528,9 @@ def _run_nextflow(
     # Yes if some variables are provided.
     # We copy the exiting env and add those provided.
     env: dict[str, Any] | None = None
-    if test_environment:
+    if environment:
         env = os.environ.copy()
-        env.update(test_environment)
+        env |= environment
 
     try:
         test = subprocess.run(
@@ -706,9 +706,6 @@ def _run_a_test(
                             input_files.append(value_item)
                         job_variables[variable] = ",".join(basename_values)
 
-    decoded_command: str = ""
-    test_environment: dict[str, str] = {}
-
     # Jote injects Job variables that are expected.
     # 'DM_' variables are injected by the Data Manager,
     # other are injected by Jote.
@@ -720,6 +717,7 @@ def _run_a_test(
     # Has the user defined any environment variables in the test?
     # If so they must exist, although we don't care about their value.
     # Extract them here to pass to the test.
+    test_environment: dict[str, str] = {}
     if "environment" in job_definition.tests[job_test_name]:
         for env_name in job_definition.tests[job_test_name].environment:
             if test_group_environment and env_name in test_group_environment:
@@ -737,8 +735,16 @@ def _run_a_test(
             assert env_value
             test_environment[env_name] = env_value
 
+    # Add test environment variables to any image variables.
+    # Test environment replaces any existing (image) environment value.
+    container_environment: dict[str, str] = decoder.get_environment_constants(
+        job_definition
+    )
+    container_environment |= test_environment
+
     # Get the raw (encoded) command from the job definition...
     raw_command: str = job_definition.command
+    decoded_command: str = ""
     # Decode it using our variables...
     if args.verbose:
         print(f"> raw_command={raw_command}")
@@ -802,16 +808,15 @@ def _run_a_test(
         job_project_directory,
         job_working_directory,
         job_command,
-        test_environment,
+        container_environment,
         args.run_as_user,
     )
     project_path: str = t_compose.create()
 
-    if input_files:
-        # Copy the data into the test's project directory.
-        # Data's expected to be found in the Job's 'inputs'.
-        if not _copy_inputs(input_files, project_path):
-            return t_compose, TestResult.FAILED
+    # Copy the data into the test's project directory.
+    # Data's expected to be found in the Job's 'inputs'.
+    if input_files and not _copy_inputs(input_files, project_path):
+        return t_compose, TestResult.FAILED
 
     # Run the container
     if not args.dry_run:
@@ -842,7 +847,7 @@ def _run_a_test(
                 command=job_command,
                 project_path=project_path,
                 nextflow_config_file=nextflow_config_file,
-                test_environment=test_environment,
+                environment=container_environment,
                 timeout_minutes=timeout_minutes,
             )
         else:
