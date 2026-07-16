@@ -158,7 +158,10 @@ class Compose:
         self._user_id: Optional[int] = user_id
         self._group_id: Optional[int] = group_id
 
-        assert Compose.try_to_set_compose_command()
+        # Note: we deliberately do *not* probe for the docker-compose command
+        # here. Detection is lazy (see 'run()' and the group helpers) so that
+        # constructing the harness - as a '--dry-run' does - neither requires
+        # docker-compose to be installed nor risks a transient probe timeout.
 
     def get_test_path(self) -> str:
         """Returns the path to the root directory for a given test."""
